@@ -635,10 +635,8 @@ function buildNodeGroup(k, p, isNew, originPos){
       lt=now;
       setTimeout(()=>{
         if(Date.now()-lt<340)return;
-        if(tree.nodes[k]?.has_child){
-          if(expandedKey===k) expandedKey=null;
-          else expandedKey=k;
-        }
+        if(tree.nodes[k]?.has_child && expandedKey===k) return;  // 展開済みノードのクリックは無効
+        if(tree.nodes[k]?.has_child) expandedKey=k;
         selectedKey=k;
         render(); showDetail(k);
       },350);
