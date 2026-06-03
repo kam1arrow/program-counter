@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Tree</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+:root {
+  /* ── High-contrast neutral grey — todometer style ── */
+  /* Dark base, strong step-up per layer                */
+  --bg:       #2e2f35;   /* page bg:      very dark grey  */
+  --bg2:      #3a3b44;   /* panel/header: clear step up   */
+  --bg3:      #464752;   /* card/input:   clearly lighter */
+  --bg4:      #53545f;   /* hover:        another step    */
+  --bg5:      #62636e;   /* border hi:    visible         */
+
+  /* Borders — strong enough to see */
+  --b1: rgba(255,255,255,0.10);
+  --b2: rgba(255,255,255,0.22);
+  --b3: rgba(255,255,255,0.35);
+
+  /* Text — maximum contrast, pure white scale */
+  --t1: #f2f3f5;   /* primary:   ~white, crisp           */
+  --t2: #a8aab8;   /* secondary: clearly readable        */
+  --t3: #72737e;   /* tertiary:  placeholder only        */
+
+  /* Accents — vivid, todometer-matched                 */
+  --red:    #e07060;   /* coral red                     */
+  --green:  #55c27a;   /* mint green                    */
+  --yellow: #dba830;   /* amber                         */
+  --blue:   #5b8dee;   /* link / primary blue           */
+
+  --radius: 10px;
+  --rsm:     6px;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Sora', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--t1);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ══════════════════ Header ══════════════════ */
+.hdr {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--b1);
+  flex-shrink: 0;
+}
+.logo {
+  font-family: var(--mono); font-size: 12px; color: var(--t2);
+  letter-spacing: .07em; flex: 1;
+}
+.logo b { color: var(--t1); font-weight: 500; }
+
+/* ── Buttons ── */
+.btn {
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  padding: 5px 11px; border-radius: var(--rsm);
+  border: 1px solid var(--b2); background: var(--bg3);
+  color: var(--t2); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .12s, color .12s, border-color .12s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg4); color: var(--t1); border-color: var(--b3); }
+
+.btn.primary { background: var(--blue); color: #fff; border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.1); }
+
+.btn.success { background: rgba(91,200,128,.24); color: #7ddb9e; border-color: rgba(91,200,128,.3); }
+.btn.success:hover { background: rgba(91,200,128,.42); }
+
+.btn.warn { background: rgba(232,184,64,.15); color: #f0cb60; border-color: rgba(232,184,64,.28); }
+.btn.warn:hover { background: rgba(232,184,64,.25); }
+
+.btn.danger { background: rgba(224,112,96,.14); color: #f08878; border-color: rgba(224,112,96,.28); }
+.btn.danger:hover { background: rgba(224,112,96,.24); }
+
+/* ══════════════════ Layout ══════════════════ */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Tree ── */
+.tree-wrap {
+  flex: 1; overflow: auto; padding: 20px;
+  background: var(--bg);
+}
+.tree-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
+.tree-wrap::-webkit-scrollbar-track { background: transparent; }
+.tree-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+#tree-svg { display: block; }
+
+/* ── Side panel ── */
+.side {
+  width: 276px; flex-shrink: 0;
+  border-left: 1px solid var(--b1);
+  background: var(--bg2);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.detail-scroll { flex: 1; overflow-y: auto; }
+.detail-scroll::-webkit-scrollbar { width: 4px; }
+.detail-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+
+.empty-hint {
+  padding: 22px 14px;
+  color: var(--t3); font-family: var(--mono); font-size: 11px; line-height: 2;
+}
+
+/* ── Section ── */
+.sec { padding: 11px 13px; border-bottom: 1px solid var(--b1); }
+.sec-lbl {
+  font-family: var(--mono); font-size: 9px; font-weight: 500;
+  color: var(--t3); letter-spacing: .1em; text-transform: uppercase;
+  margin-bottom: 9px;
+}
+
+/* ── Node detail ── */
+.node-name {
+  font-size: 14px; font-weight: 600; line-height: 1.35;
+  margin-bottom: 7px; word-break: break-all; color: var(--t1);
+}
+
+.badges { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 9px; }
+.badge {
+  font-family: var(--mono); font-size: 10px;
+  padding: 2px 7px; border-radius: 999px;
+  border: 1px solid transparent; font-weight: 500;
+}
+/* Priority badges — warm scale, readable on dark grey */
+.bp1 { background: rgba(224,112,96,.28); color: #f09080; border-color: rgba(224,112,96,.50); }
+.bp2 { background: rgba(232,184,64,.24); color: #f0cb60; border-color: rgba(232,184,64,.45); }
+.bp3 { background: rgba(91,200,128,.22); color: #7ddb9e; border-color: rgba(91,200,128,.42); }
+.bp4 { background: rgba(106,157,232,.22); color: #96baf4; border-color: rgba(106,157,232,.42); }
+.bp5 { background: rgba(255,255,255,.12); color: var(--t2); border-color: var(--b2); }
+.bph  { background: rgba(178,140,255,.24); color: #c8aaff; border-color: rgba(178,140,255,.42); }
+.bdone{ background: rgba(91,200,128,.24); color: #7ddb9e; border-color: rgba(91,200,128,.44); }
+.bpar { background: rgba(255,255,255,.07); color: var(--t2); border-color: var(--b2); }
+
+.pomo-row { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.pomo-n { font-family: var(--mono); color: var(--yellow); font-weight: 500; font-size: 18px; }
+.pomo-d { font-size: 10px; color: var(--yellow); opacity: .55; letter-spacing: 1px; }
+.pref   { font-family: var(--mono); font-size: 10px; color: var(--t3); }
+
+/* ── Note / URL ── */
+.note-wrap { display: flex; flex-direction: column; gap: 6px; }
+textarea.note {
+  width: 100%; min-height: 70px; resize: vertical;
+  font-family: var(--mono); font-size: 11px; line-height: 1.75;
+  padding: 7px 9px;
+  border: 1px solid var(--b2); border-radius: var(--rsm);
+  background: var(--bg); color: var(--t1); outline: none;
+  transition: border-color .13s;
+}
+textarea.note:focus { border-color: var(--blue); }
+textarea.note::placeholder { color: var(--t3); }
+.url-links { display: flex; flex-direction: column; gap: 4px; }
+.url-link {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 10px; color: var(--blue);
+  text-decoration: none; word-break: break-all;
+  padding: 3px 8px; border-radius: var(--rsm);
+  background: rgba(106,157,232,.12); border: 1px solid rgba(106,157,232,.22);
+  transition: background .12s;
+}
+.url-link:hover { background: rgba(106,157,232,.22); }
+
+/* ── Form elements ── */
+.form-col { display: flex; flex-direction: column; gap: 7px; }
+.field label {
+  font-family: var(--mono); font-size: 9px; color: var(--t3);
+  letter-spacing: .08em; text-transform: uppercase;
+  display: block; margin-bottom: 3px;
+}
+.field input, .field select {
+  width: 100%; font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px; border: 1px solid var(--b2); border-radius: var(--rsm);
+  background: var(--bg); color: var(--t1); outline: none;
+  transition: border-color .13s;
+}
+.field input:focus, .field select:focus { border-color: var(--blue); }
+.field select option { background: var(--bg3); }
+.row2 { display: flex; gap: 7px; }
+.row2 .field { flex: 1; }
+.chk-row {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--t2); cursor: pointer;
+}
+.chk-row input { accent-color: var(--green); width: 14px; height: 14px; }
+.act-row { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* ══════════════════ Random panel ══════════════════ */
+.rand-panel { padding: 11px 13px; flex-shrink: 0; border-top: 1px solid var(--b1); }
+.rand-btns  { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* ══════════════════ Modal ══════════════════ */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.52); backdrop-filter: blur(3px);
+  z-index: 500; align-items: center; justify-content: center;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: var(--bg2); border: 1px solid var(--b2);
+  border-radius: 13px; padding: 16px; width: 330px;
+  max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,.55);
+}
+.modal h3 { font-size: 13px; font-weight: 600; margin-bottom: 11px; color: var(--t1); }
+.child-card {
+  background: var(--bg3); border: 1px solid var(--b1);
+  border-radius: var(--radius); padding: 9px; margin-bottom: 7px; position: relative;
+}
+.child-card-title {
+  font-family: var(--mono); font-size: 9px; color: var(--t3);
+  letter-spacing: .08em; text-transform: uppercase; margin-bottom: 7px;
+}
+.rm-child {
+  position: absolute; top: 7px; right: 8px;
+  background: none; border: none; cursor: pointer;
+  color: var(--t3); font-size: 14px; line-height: 1; transition: color .12s;
+}
+.rm-child:hover { color: var(--red); }
+.add-more {
+  width: 100%; padding: 6px;
+  border: 1px dashed var(--b2); border-radius: var(--rsm);
+  background: none; color: var(--t3); cursor: pointer;
+  font-size: 12px; font-family: var(--sans); margin-bottom: 10px;
+  transition: all .12s;
+}
+.add-more:hover { background: var(--bg3); color: var(--t2); border-color: var(--blue); }
+.modal-acts { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* ══════════════════ Program Counter (focus/run) view ══════════════════ */
+#pc-view {
+  flex: 1; display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  background:
+    radial-gradient(130% 90% at 50% -12%, rgba(219,168,48,.08), transparent 60%),
+    var(--bg);
+  padding: 44px 24px; text-align: center; position: relative; overflow: auto;
+}
+#pc-view.active { display: flex; }
+body.run-mode #plan-view { display: none; }
+
+.pc-crumb {
+  position: absolute; top: 24px; left: 0; right: 0; padding: 0 22px;
+  font-family: var(--mono); font-size: 11px; color: var(--t3); letter-spacing: .06em;
+}
+.pc-crumb b { color: var(--t2); font-weight: 500; }
+
+.pc-ring-wrap { position: relative; width: 184px; height: 184px; margin-bottom: 34px; }
+.pc-ring-wrap svg { display: block; transform: rotate(-90deg); }
+.pc-ring-time { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pc-ring-time .t { font-family: var(--mono); font-size: 40px; font-weight: 500; color: var(--t1); line-height: 1; }
+.pc-ring-time .s { font-family: var(--mono); font-size: 9px; letter-spacing: .24em; color: var(--t3); text-transform: uppercase; margin-top: 6px; }
+
+.pc-instruction {
+  font-family: var(--sans); font-weight: 600; font-size: 32px; line-height: 1.3;
+  color: var(--t1); max-width: 640px; margin-bottom: 12px; word-break: break-word;
+  animation: pcRise .45s ease both;
+}
+@keyframes pcRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.pc-pomo { font-size: 14px; color: var(--yellow); letter-spacing: 1px; margin-bottom: 28px; min-height: 18px; }
+
+.pc-dur { display: inline-flex; border: 1px solid var(--b2); border-radius: var(--rsm); overflow: hidden; margin-bottom: 26px; }
+.pc-dur button { background: transparent; color: var(--t3); border: none; padding: 6px 16px; cursor: pointer; font-family: var(--mono); font-size: 12px; }
+.pc-dur button.on { background: var(--yellow); color: #241c08; font-weight: 500; }
+
+.pc-acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.pc-big { font-size: 14px; padding: 13px 28px; }
+.pc-yield { margin-top: 26px; background: none; border: none; color: var(--t3); cursor: pointer; font-family: var(--mono); font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+.pc-yield:hover { color: var(--t2); }
+.pc-amb { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 30px; }
+.pc-amb button { background: transparent; border: 1px solid var(--b2); color: var(--t3); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-family: var(--mono); font-size: 11px; transition: background .12s, color .12s, border-color .12s; }
+.pc-amb button:hover { color: var(--t2); border-color: var(--b3); }
+.pc-amb button.on { background: rgba(219,168,48,.18); color: var(--yellow); border-color: rgba(219,168,48,.42); }
+.pc-empty { font-family: var(--sans); font-size: 21px; font-weight: 500; color: var(--t2); max-width: 440px; line-height: 1.55; }
+.pc-logbox { max-width: 440px; width: 100%; }
+.pc-logbox textarea { width: 100%; font-family: var(--mono); font-size: 12px; line-height: 1.7; padding: 9px 11px; border: 1px solid var(--b2); border-radius: var(--rsm); background: var(--bg); color: var(--t1); outline: none; resize: vertical; }
+.pc-logbox textarea:focus { border-color: var(--yellow); }
+
+/* mode toggle in header */
+.mode-tog { display: inline-flex; border: 1px solid var(--b2); border-radius: var(--rsm); overflow: hidden; }
+.mode-tog button { background: transparent; color: var(--t2); border: none; padding: 6px 14px; cursor: pointer; font-family: var(--sans); font-size: 11px; font-weight: 500; }
+.mode-tog button.on { background: var(--yellow); color: #241c08; }
+</style>
+</head>
+<body>
+
+<!-- Splash screen -->
+<div id="splash" style="
+  display:flex; position:fixed; inset:0; z-index:1000;
+  background:#2e2f35;
+  flex-direction:column; align-items:center; justify-content:center;
+  gap:24px; font-family:'Sora',sans-serif;
+">
+  <div style="text-align:center; margin-bottom:8px;">
+    <div style="font-family:'DM Mono',monospace; font-size:13px; color:#9899a6; letter-spacing:.1em; margin-bottom:12px;">task-tree</div>
+    <div style="font-size:32px; font-weight:600; color:#f2f3f5; margin-bottom:8px;">プロジェクトを開く</div>
+    <div style="font-size:13px; color:#72737e;">JSONファイルを読み込むか、新規プロジェクトを作成してください</div>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:10px; width:280px;">
+    <button id="ls-restore-btn" onclick="restoreFromLS()" style="
+      display:none;
+      font-family:'Sora',sans-serif; font-size:14px; font-weight:500;
+      padding:14px 20px; border-radius:10px;
+      background:#52c285; color:#fff; border:none; cursor:pointer;
+      align-items:center; justify-content:center; gap:8px;
+      transition:filter .13s;
+    " onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter=''">
+      <i class="ti ti-history" style="font-size:16px"></i> <span id="ls-restore-label">前回の続きから再開</span>
+    </button>
+    <button onclick="$('file-in').click()" style="
+      font-family:'Sora',sans-serif; font-size:14px; font-weight:500;
+      padding:14px 20px; border-radius:10px;
+      background:#5b8dee; color:#fff; border:none; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      transition:filter .13s;
+    " onmouseover="this.style.filter='brightness(1.12)'" onmouseout="this.style.filter=''">
+      <i class="ti ti-upload" style="font-size:16px"></i> JSONを読み込む
+    </button>
+    <button onclick="newProjectFromSplash()" style="
+      font-family:'Sora',sans-serif; font-size:14px; font-weight:500;
+      padding:14px 20px; border-radius:10px;
+      background:transparent; color:#a8aab8;
+      border:1px solid rgba(255,255,255,0.18); cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      transition:background .13s, color .13s;
+    " onmouseover="this.style.background='#3a3b44';this.style.color='#f2f3f5'" onmouseout="this.style.background='transparent';this.style.color='#a8aab8'">
+      <i class="ti ti-plus" style="font-size:16px"></i> 新規プロジェクト
+    </button>
+  </div>
+  <div style="font-family:'DM Mono',monospace; font-size:10px; color:#64656f; margin-top:8px;">
+    drag &amp; drop も対応しています
+  </div>
+</div>
+
+<div class="hdr">
+  <div class="logo">program<b>·counter</b></div>
+  <div class="mode-tog">
+    <button id="mode-run" onclick="setMode('run')">フォーカス</button>
+    <button id="mode-plan" class="on" onclick="setMode('plan')">計画</button>
+  </div>
+  <button class="btn" onclick="addRoot()"><i class="ti ti-plus"></i> New Project</button>
+  <button class="btn" onclick="importJSON()"><i class="ti ti-upload"></i> Import</button>
+  <button class="btn" onclick="exportJSON()"><i class="ti ti-download"></i> Export</button>
+  <button class="btn" id="ls-toggle-btn" onclick="toggleAutoSave()" title="LocalStorage自動保存"><i class="ti ti-device-floppy"></i> <span id="ls-toggle-label">自動保存: OFF</span></button>
+  <input type="file" id="file-in" accept=".json" style="display:none" onchange="onFile(event)">
+</div>
+
+<div class="main" id="plan-view">
+  <div class="tree-wrap"><svg id="tree-svg"></svg></div>
+
+  <div class="side">
+    <div class="detail-scroll" id="detail-scroll">
+      <div class="empty-hint">// click node → inspect<br>// double-click → breakdown<br>// right-click → delete</div>
+    </div>
+  </div>
+</div>
+
+<!-- Program Counter (focus) view -->
+<div id="pc-view"></div>
+
+<!-- Breakdown modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="modal-title">ブレークダウン</h3>
+    <div id="modal-body"></div>
+    <button class="add-more" onclick="addChildField()">＋ タスクを追加</button>
+    <div class="modal-acts">
+      <button class="btn" onclick="closeModal()">キャンセル</button>
+      <button class="btn primary" onclick="confirmBreakdown()">確定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+let tree = { nodes: {}, roots: [] };
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let selectedKey = null;
+let expandedKey = null;
+let randomKey   = null;
+let breakdownParent = null;
+let pendingChildren = [];
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+function svgEl(t){ return document.createElementNS('http://www.w3.org/2000/svg',t); }
+function trunc(s,n){ return s.length>n?s.slice(0,n-1)+'…':s; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc2(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function urls(t){ return t?[...new Set((t.match(/https?:\/\/[^\s\n]+/g)||[]))]: []; }
+
+// ─── Tree helpers ─────────────────────────────────────────────────────────────
+function getChildren(k){ return Object.values(tree.nodes).filter(n=>n.parent===k).map(n=>n.key); }
+function sortedCh(k){
+  // Active-path child goes first (topmost y), rest sorted by phase
+  const ap=activePath();
+  return getChildren(k).sort((a,b)=>{
+    const aAp=ap.has(a)?0:1, bAp=ap.has(b)?0:1;
+    if(aAp!==bAp) return aAp-bAp;
+    return (tree.nodes[a]?.phase??999)-(tree.nodes[b]?.phase??999);
+  });
+}
+function getLeaves(){ return Object.values(tree.nodes).filter(n=>!n.has_child&&!n.is_finished).map(n=>n.key); }
+
+function computeAll(){
+  const vis=new Set(),ord=[];
+  const visit=k=>{ if(vis.has(k))return; vis.add(k); getChildren(k).forEach(visit); ord.push(k); };
+  tree.roots.forEach(visit);
+  ord.forEach(k=>{
+    const ch=getChildren(k);
+    if(!ch.length){tree.nodes[k].has_child=false;return;}
+    tree.nodes[k].has_child=true;
+    tree.nodes[k].is_finished=ch.every(c=>tree.nodes[c]?.is_finished);
+    tree.nodes[k].pomodoro=ch.reduce((s,c)=>s+(tree.nodes[c]?.pomodoro||0),0);
+  });
+}
+
+function isAncestorOrSelf(anc,k){
+  let c=k;
+  while(c){ if(c===anc)return true; c=tree.nodes[c]?.parent; }
+  return false;
+}
+
+// ─── Visible nodes (only expanded subtree) ───────────────────────────────────
+function visibleNodes(){
+  const vis=[];
+  const q=[...tree.roots];
+  while(q.length){
+    const k=q.shift();
+    if(!tree.nodes[k])continue;
+    vis.push(k);
+    if(tree.nodes[k].has_child && expandedKey && isAncestorOrSelf(k,expandedKey))
+      sortedCh(k).forEach(c=>q.push(c));
+  }
+  return vis;
+}
+
+// ─── Layout: left → right ────────────────────────────────────────────────────
+const NW=148,NH=46,HGAP=58,VGAP=14;
+
+function subH(k,visSet){
+  const ch=sortedCh(k).filter(c=>visSet.has(c));
+  if(!ch.length)return NH;
+  return ch.reduce((s,c)=>s+subH(c,visSet),0)+VGAP*(ch.length-1);
+}
+
+function layoutVis(){
+  const vis=visibleNodes(), visSet=new Set(vis), pos={};
+  const ap=activePath();
+  function place(k,x,y){
+    const ch=sortedCh(k).filter(c=>visSet.has(c));
+    if(!ch.length){pos[k]={x,y};return NH;}
+    const hs=ch.map(c=>subH(c,visSet));
+    const tot=hs.reduce((s,h)=>s+h,0)+VGAP*(ch.length-1);
+    const selfH=Math.max(NH,tot);
+    let cy=y+(selfH-tot)/2;
+    ch.forEach((c,i)=>{ place(c,x+NW+HGAP,cy+hs[i]/2-NH/2); cy+=hs[i]+VGAP; });
+    // Active-path parents align to their topmost child (ch[0] is always the active child)
+    if(ap.has(k) && ch.length){
+      pos[k]={x, y:pos[ch[0]].y};
+    } else {
+      const cys=ch.map(c=>pos[c].y+NH/2);
+      pos[k]={x, y:(Math.min(...cys)+Math.max(...cys))/2-NH/2};
+    }
+    return selfH;
+  }
+
+  const sortedRoots=[...tree.roots].sort((a,b)=>{
+    const aAp=ap.has(a)?0:1, bAp=ap.has(b)?0:1;
+    return aAp-bAp;
+  });
+
+  // First pass: place everything starting at y=20
+  let oy=20;
+  sortedRoots.forEach(r=>{ const h=subH(r,visSet); place(r,20,oy); oy+=Math.max(h,NH)+VGAP*4; });
+
+  // Second pass: shift the active project's subtree up so its topmost active-path
+  // node lands at y=20, keeping everything else below it
+  const activeRoot=sortedRoots.find(r=>ap.has(r));
+  if(activeRoot){
+    // Find the minimum y among active-path nodes in this project
+    const activeProjectKeys=Object.keys(pos).filter(k=>{
+      let cur=k; while(cur){ if(cur===activeRoot) return true; cur=tree.nodes[cur]?.parent; } return false;
+    });
+    const apKeys=activeProjectKeys.filter(k=>ap.has(k));
+    if(apKeys.length){
+      const minApY=Math.min(...apKeys.map(k=>pos[k].y));
+      const shift=minApY-20;
+      if(shift>0){
+        // Shift all nodes in the active project up by `shift`
+        activeProjectKeys.forEach(k=>{ pos[k]={x:pos[k].x, y:pos[k].y-shift}; });
+        // Also shift subsequent projects up accordingly
+        // (they were placed after activeRoot, so shift them too to close the gap)
+        let shifting=false;
+        sortedRoots.forEach(r=>{
+          if(r===activeRoot){shifting=true;return;}
+          if(!shifting)return;
+          const projectKeys=Object.keys(pos).filter(k=>{
+            let cur=k; while(cur){if(cur===r)return true;cur=tree.nodes[cur]?.parent;} return false;
+          });
+          projectKeys.forEach(k=>{ pos[k]={x:pos[k].x, y:pos[k].y-shift}; });
+        });
+      }
+    }
+  }
+
+  return pos;
+}
+
+// ─── Node fill / stroke / text colors ────────────────────────────────────────
+// All colours use the same neutral-grey family as the screenshot.
+// Colour conveys meaning only via the stroke & text accent — fills stay grey-range.
+const C = {
+  // default leaf: slightly lighter grey, blue stroke
+  leaf:     {f:'#3c3d47', s:'#7aadff', sw:0.8, t:'#eceef5'},
+  // parent (collapsed): same as leaf but purple stroke
+  parent:   {f:'#3a3b46', s:'#a888f0', sw:0.8, t:'#e4e0f5'},
+  // expanded parent: lighter, brighter stroke so it stands out
+  expanded: {f:'#3e4455', s:'#90beff', sw:1.6, t:'#eef2ff'},
+  // done: muted green-grey
+  done:     {f:'#323d35', s:'#5bc880', sw:0.8, t:'#b8e8c4'},
+  // selected: warm amber highlight
+  selected: {f:'#483e28', s:'#e8b840', sw:2.0, t:'#fde882'},
+  // random pick: coral highlight
+  random:   {f:'#47302e', s:'#f08070', sw:1.6, t:'#fca89e'},
+};
+function nodeColor(k){
+  if(k===randomKey)   return C.random;
+  if(k===selectedKey) return C.selected;
+  const n=tree.nodes[k];
+  if(n.has_child){
+    return (expandedKey && isAncestorOrSelf(k,expandedKey)) ? C.expanded : C.parent;
+  }
+  if(n.is_finished) return C.done;
+  return C.leaf;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Animation state ──────────────────────────────────────────────────────────
+// Tracks last known positions for enter/exit animations
+let _prevPos = {};   // {key: {x,y}}
+
+// Returns set of keys on the path from root to selectedKey (inclusive)
+function activePath(){
+  const path=new Set();
+  let k=selectedKey;
+  while(k){ path.add(k); k=tree.nodes[k]?.parent; }
+  return path;
+}
+
+function buildNodeGroup(k, p, isNew, originPos){
+  const n=tree.nodes[k];
+  const c=nodeColor(k);
+  const g=svgEl('g');
+  g.style.cursor='pointer';
+  g.dataset.key=k;
+
+  // Starting transform for animation
+  const tx0 = isNew && originPos ? originPos.x : p.x;
+  const ty0 = isNew && originPos ? originPos.y : p.y;
+  g.setAttribute('transform',`translate(${tx0},${ty0})`);
+
+  if(n.is_finished&&k!==selectedKey&&k!==randomKey) g.style.opacity = isNew ? '0' : '0.52';
+  else if(isNew) g.style.opacity='0';
+
+  const rect=svgEl('rect');
+  rect.setAttribute('width',NW); rect.setAttribute('height',NH); rect.setAttribute('rx',7);
+  rect.setAttribute('fill',c.f); rect.setAttribute('stroke',c.s);
+  rect.setAttribute('stroke-width',c.sw);
+  rect.style.transition='filter .12s';
+  g.appendChild(rect);
+
+  if(n.phase!=null){
+    const ph=svgEl('text'); ph.setAttribute('x',6); ph.setAttribute('y',10);
+    ph.setAttribute('fill',c.s); ph.setAttribute('font-size','8');
+    ph.setAttribute('font-family',"'DM Mono',monospace"); ph.setAttribute('opacity','0.9');
+    ph.textContent='P'+n.phase; g.appendChild(ph);
+  }
+  if(n.priority!=null){
+    const pr=svgEl('text'); pr.setAttribute('x',NW-6); pr.setAttribute('y',10);
+    pr.setAttribute('text-anchor','end'); pr.setAttribute('fill',c.s);
+    pr.setAttribute('font-size','8'); pr.setAttribute('font-family',"'DM Mono',monospace");
+    pr.setAttribute('opacity','0.9'); pr.textContent='★'+n.priority; g.appendChild(pr);
+  }
+  if(n.note&&n.note.trim()){
+    const dot=svgEl('circle');
+    dot.setAttribute('cx',7); dot.setAttribute('cy',NH-7); dot.setAttribute('r',3);
+    dot.setAttribute('fill','#e8b840'); g.appendChild(dot);
+  }
+
+  const hasBottom=n.pomodoro>0;
+  const label=svgEl('text');
+  label.setAttribute('x',NW/2);
+  label.setAttribute('y', hasBottom ? NH/2-4 : NH/2);
+  label.setAttribute('text-anchor','middle'); label.setAttribute('dominant-baseline','central');
+  label.setAttribute('fill',c.t); label.setAttribute('font-size','12');
+  label.setAttribute('font-weight','500'); label.setAttribute('font-family',"'Sora',sans-serif");
+  label.textContent=trunc(k,16); g.appendChild(label);
+
+  if(n.pomodoro>0){
+    const pm=svgEl('text'); pm.setAttribute('x',NW/2); pm.setAttribute('y',NH-8);
+    pm.setAttribute('text-anchor','middle'); pm.setAttribute('fill','rgba(232,184,64,0.85)');
+    pm.setAttribute('font-size','9'); pm.setAttribute('font-family',"'DM Mono',monospace");
+    pm.textContent='🍅 ×'+n.pomodoro; g.appendChild(pm);
+  }
+  if(n.is_finished){
+    const ck=svgEl('text'); ck.setAttribute('x',NW-6); ck.setAttribute('y',NH-7);
+    ck.setAttribute('text-anchor','end'); ck.setAttribute('fill','#5bc880');
+    ck.setAttribute('font-size','13'); ck.textContent='✓'; g.appendChild(ck);
+  }
+
+  g.addEventListener('mouseenter',()=>rect.style.filter='brightness(1.15)');
+  g.addEventListener('mouseleave',()=>rect.style.filter='');
+
+  let lt=0;
+  g.addEventListener('click',e=>{
+    const now=Date.now();
+    if(now-lt<350){ lt=0; openBreakdown(k); }
+    else{
+      lt=now;
+      setTimeout(()=>{
+        if(Date.now()-lt<340)return;
+        if(tree.nodes[k]?.has_child){
+          if(expandedKey===k) expandedKey=null;
+          else expandedKey=k;
+        }
+        selectedKey=k;
+        render(); showDetail(k);
+      },350);
+    }
+    e.stopPropagation();
+  });
+  g.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); delNode(k); });
+  return g;
+}
+
+const ANI_DUR = 320;  // ms
+const ANI_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
+function render(){
+  computeAll();
+  const pos=layoutVis();
+  const visSet=new Set(Object.keys(pos));
+  const svg=$('tree-svg');
+
+  let mx=0,my=0;
+  Object.values(pos).forEach(p=>{mx=Math.max(mx,p.x+NW+28);my=Math.max(my,p.y+NH+20);});
+  svg.setAttribute('width',Math.max(mx,400));
+  svg.setAttribute('height',Math.max(my,200));
+
+  // ── Ensure 3 layer groups exist (edges / bg-nodes / active-nodes) ──
+  let layerEdge = svg.querySelector('#layer-edge');
+  let layerBg   = svg.querySelector('#layer-bg');
+  let layerTop  = svg.querySelector('#layer-top');
+  if(!layerEdge){
+    layerEdge=svgEl('g'); layerEdge.id='layer-edge'; svg.appendChild(layerEdge);
+    layerBg  =svgEl('g'); layerBg.id='layer-bg';     svg.appendChild(layerBg);
+    layerTop =svgEl('g'); layerTop.id='layer-top';   svg.appendChild(layerTop);
+  }
+  // Clear edge + chevron layer each render (cheap)
+  layerEdge.innerHTML='';
+
+  const ap=activePath();
+
+  // ── Figure out which keys are new / existing / removed ──
+  const prevKeys = new Set(Object.keys(_prevPos));
+  const newKeys  = new Set(Object.keys(pos));
+
+  // Keys entering: in newKeys but not prevKeys
+  const entering = [...newKeys].filter(k=>!prevKeys.has(k));
+  // Keys exiting:  in prevKeys but not newKeys
+  const exiting  = [...prevKeys].filter(k=>!newKeys.has(k));
+  // Keys staying:  in both
+  const staying  = [...newKeys].filter(k=>prevKeys.has(k));
+
+  // ── Animate exiting nodes (play exit, then remove) ──
+  exiting.forEach(k=>{
+    const old=svg.querySelector(`[data-key="${CSS.escape(k)}"]`);
+    if(!old)return;
+    // slide toward parent's current position
+    const parentKey=tree.nodes[k]?.parent;
+    const destPos=parentKey&&pos[parentKey]?pos[parentKey]:_prevPos[k];
+    const from=`translate(${_prevPos[k].x},${_prevPos[k].y})`;
+    const to=`translate(${destPos.x},${destPos.y})`;
+    old.animate([
+      {transform:from, opacity: old.style.opacity||'1'},
+      {transform:to,   opacity:'0'}
+    ],{duration:ANI_DUR, easing:ANI_EASE, fill:'forwards'})
+    .finished.then(()=>old.remove());
+  });
+
+  // ── Rebuild edge/chevron layer ──
+
+  // ── Edges ──
+  Object.keys(pos).forEach(k=>{
+    sortedCh(k).filter(c=>visSet.has(c)).forEach(c=>{
+      const pp=pos[k],cp=pos[c];
+      const x1=pp.x+NW,y1=pp.y+NH/2,x2=cp.x,y2=cp.y+NH/2,midX=(x1+x2)/2;
+      const path=svgEl('path');
+      path.setAttribute('d',`M${x1},${y1}C${midX},${y1} ${midX},${y2} ${x2},${y2}`);
+      path.setAttribute('fill','none');
+      // highlight edge if both endpoints are on active path
+      const onActive=ap.has(k)&&ap.has(c);
+      path.setAttribute('stroke', onActive ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)');
+      path.setAttribute('stroke-width', onActive ? '2' : '1.5');
+      path.dataset.from=k; path.dataset.to=c;
+      // fade edge in if it's new (child is entering)
+      const edgeNew=entering.includes(c);
+      if(edgeNew){ path.style.opacity='0'; }
+      layerEdge.appendChild(path);
+      if(edgeNew){
+        path.animate([{opacity:'0'},{opacity:'1'}],
+          {duration:ANI_DUR, easing:ANI_EASE, delay:ANI_DUR*0.3, fill:'forwards'});
+      }
+    });
+  });
+
+  // ── Chevrons ──
+  Object.keys(pos).forEach(k=>{
+    if(!tree.nodes[k]?.has_child)return;
+    const pp=pos[k];
+    const isExp=expandedKey&&isAncestorOrSelf(k,expandedKey);
+    const ch=svgEl('text');
+    ch.setAttribute('x',pp.x+NW+6); ch.setAttribute('y',pp.y+NH/2);
+    ch.setAttribute('dominant-baseline','central');
+    ch.setAttribute('fill','rgba(255,255,255,0.28)');
+    ch.setAttribute('font-size','10'); ch.setAttribute('font-family','sans-serif');
+    ch.textContent=isExp?'▾':'▸';
+    layerEdge.appendChild(ch);
+  });
+
+  // ── Staying nodes: animate to new position ──
+  staying.forEach(k=>{
+    let g=svg.querySelector(`[data-key="${CSS.escape(k)}"]`);
+    if(!g){
+      // wasn't in DOM yet (first render), create it
+      g=buildNodeGroup(k, pos[k], false, null);
+      g.style.opacity=tree.nodes[k].is_finished&&k!==selectedKey&&k!==randomKey?'0.52':'1';
+      g.setAttribute('transform',`translate(${pos[k].x},${pos[k].y})`);
+      (ap.has(k)?layerTop:layerBg).appendChild(g);
+      return;
+    }
+    // Rebuild content (colors may have changed)
+    const newG=buildNodeGroup(k, pos[k], false, null);
+    newG.style.opacity=tree.nodes[k].is_finished&&k!==selectedKey&&k!==randomKey?'0.52':'1';
+    // Replace in-place first, then move to correct layer
+    g.parentElement.replaceChild(newG, g);
+    const targetLayer=ap.has(k)?layerTop:layerBg;
+    if(newG.parentElement!==targetLayer) targetLayer.appendChild(newG);
+    g=newG;
+
+    const fromX=_prevPos[k].x, fromY=_prevPos[k].y;
+    const toX=pos[k].x,       toY=pos[k].y;
+    if(fromX!==toX||fromY!==toY){
+      g.animate([
+        {transform:`translate(${fromX}px,${fromY}px)`},
+        {transform:`translate(${toX}px,${toY}px)`}
+      ],{duration:ANI_DUR, easing:ANI_EASE, fill:'forwards'})
+      .finished.then(()=>{
+        g.setAttribute('transform',`translate(${toX},${toY})`);
+        // clear WAAPI fill so CSS transform doesn't fight
+      });
+    }
+  });
+
+  // ── Entering nodes: animate from parent position ──
+  entering.forEach(k=>{
+    const parentKey=tree.nodes[k]?.parent;
+    const originPos=parentKey&&pos[parentKey]?pos[parentKey]:pos[k];
+    const g=buildNodeGroup(k, pos[k], true, originPos);
+    (ap.has(k)?layerTop:layerBg).appendChild(g);
+    // small stagger based on sibling index
+    const sibIdx=sortedCh(parentKey||'').indexOf(k);
+    const delay=sibIdx*40;
+    g.animate([
+      {transform:`translate(${originPos.x}px,${originPos.y}px)`, opacity:'0', easing:'ease-out'},
+      {transform:`translate(${pos[k].x}px,${pos[k].y}px)`,       opacity: tree.nodes[k].is_finished&&k!==selectedKey&&k!==randomKey?'0.52':'1'}
+    ],{duration:ANI_DUR+60, easing:ANI_EASE, delay, fill:'forwards'})
+    .finished.then(()=>{
+      g.setAttribute('transform',`translate(${pos[k].x},${pos[k].y})`);
+      g.style.opacity=tree.nodes[k].is_finished&&k!==selectedKey&&k!==randomKey?'0.52':'1';
+    });
+  });
+
+  // ── Save positions for next render ──
+  _prevPos={};
+  Object.keys(pos).forEach(k=>{ _prevPos[k]={x:pos[k].x,y:pos[k].y}; });
+  // Auto-save to LocalStorage if enabled
+  lsSave();
+}
+
+// ─── Detail panel ─────────────────────────────────────────────────────────────
+const PL=['','最高','高','普通','低','最低'];
+
+function showDetail(k){
+  const n=tree.nodes[k]; if(!n)return;
+  computeAll();
+  const pd=n.pomodoro>0?'🍅'.repeat(Math.min(n.pomodoro,10))+(n.pomodoro>10?` ×${n.pomodoro}`:''):'—';
+  const ul=urls(n.note);
+  const ulHtml=ul.length?`<div class="url-links">${ul.map(u=>
+    `<a class="url-link" href="${esc(u)}" target="_blank" rel="noopener">
+      <i class="ti ti-external-link" style="font-size:11px;flex-shrink:0"></i>${esc(trunc(u,34))}</a>`
+  ).join('')}</div>`:'';
+
+  $('detail-scroll').innerHTML=`
+<div class="sec">
+  <div class="sec-lbl">Node</div>
+  <div class="node-name">${esc(n.key)}</div>
+  <div class="badges">
+    ${n.priority?`<span class="badge bp${n.priority}">★${n.priority} ${PL[n.priority]||''}</span>`:''}
+    ${n.phase!=null?`<span class="badge bph">Phase ${n.phase}</span>`:''}
+    ${n.is_finished?`<span class="badge bdone">✓ 完了</span>`:''}
+    ${n.has_child?`<span class="badge bpar">親ノード</span>`:''}
+  </div>
+  <div class="pomo-row">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase">POMO</span>
+    <span class="pomo-n">${n.pomodoro}</span>
+    <span class="pomo-d">${pd}</span>
+  </div>
+  <div class="pref">${n.parent?'↖ '+n.parent:'root'}</div>
+</div>
+
+<div class="sec">
+  <div class="sec-lbl">Note &amp; Links</div>
+  <div class="note-wrap">
+    <textarea class="note" placeholder="メモ・URLを入力..."
+      onchange="saveNote('${esc2(k)}',this.value)"
+      oninput="liveLinks(this.value)">${esc(n.note||'')}</textarea>
+    <div id="url-box">${ulHtml}</div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-lbl">Edit</div>
+  <div class="form-col">
+    <div class="field"><label>Task Key</label>
+      <input type="text" value="${esc(n.key)}" onchange="applyEdit('key',this.value)">
+    </div>
+    <div class="row2">
+      <div class="field"><label>Priority</label>
+        <select onchange="applyEdit('priority',parseInt(this.value))">
+          ${[1,2,3,4,5].map(i=>`<option value="${i}"${n.priority===i?' selected':''}>${i} ${PL[i]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Phase</label>
+        <input type="number" min="1" placeholder="none"
+          value="${n.phase!=null?n.phase:''}"
+          onchange="applyEdit('phase',this.value?parseInt(this.value):null)">
+      </div>
+    </div>
+    ${!n.has_child?`
+    <div class="field"><label>Pomodoro</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="number" min="0" value="${n.pomodoro}" style="width:70px"
+          onchange="applyEdit('pomodoro',parseInt(this.value)||0)">
+        <button class="btn warn" onclick="incPomo('${esc2(k)}')">+1 🍅</button>
+      </div>
+    </div>
+    `:''}
+    <div class="act-row">
+      ${!n.has_child?`<button class="btn warn" onclick="pcLoadAndRun('${esc2(k)}')"><i class="ti ti-player-play"></i> 実行</button>`:''}
+      ${!n.has_child?(n.is_finished
+        ? `<button class="btn" onclick="toggleDone('${esc2(k)}')"><i class="ti ti-arrow-back-up"></i> 未完了に戻す</button>`
+        : `<button class="btn success" onclick="toggleDone('${esc2(k)}')"><i class="ti ti-check"></i> 完了</button>`):''}
+    </div>
+  </div>
+</div>`;
+}
+
+function saveNote(k,v){ if(!tree.nodes[k])return; tree.nodes[k].note=v; render(); }
+function liveLinks(v){
+  const box=$('url-box'); if(!box)return;
+  const ul=urls(v);
+  box.innerHTML=ul.length?`<div class="url-links">${ul.map(u=>
+    `<a class="url-link" href="${esc(u)}" target="_blank" rel="noopener">
+      <i class="ti ti-external-link" style="font-size:11px;flex-shrink:0"></i>${esc(trunc(u,34))}</a>`
+  ).join('')}</div>`:'';
+}
+
+function applyEdit(field,val){
+  if(!selectedKey)return;
+  const n=tree.nodes[selectedKey];
+  if(field==='key'&&val&&val!==selectedKey){
+    const nk=val.trim(); if(!nk)return;
+    tree.nodes[nk]={...n,key:nk};
+    delete tree.nodes[selectedKey];
+    Object.values(tree.nodes).forEach(nd=>{if(nd.parent===selectedKey)nd.parent=nk;});
+    tree.roots=tree.roots.map(r=>r===selectedKey?nk:r);
+    if(randomKey===selectedKey) randomKey=nk;
+    if(expandedKey===selectedKey) expandedKey=nk;
+    selectedKey=nk;
+  } else { n[field]=val; }
+  computeAll(); render(); showDetail(selectedKey);
+}
+
+function incPomo(k){ tree.nodes[k].pomodoro=(tree.nodes[k].pomodoro||0)+1; computeAll(); render(); showDetail(k); }
+
+function delNode(k){
+  if(!confirm(`"${k}" を削除しますか？\n（子ノードも全て削除されます）`))return;
+  const del=key=>{ getChildren(key).forEach(del); delete tree.nodes[key]; };
+  del(k); tree.roots=tree.roots.filter(r=>r!==k);
+  if(selectedKey===k) selectedKey=null;
+  if(expandedKey===k) expandedKey=null;
+  if(randomKey===k) randomKey=null;
+  $('detail-scroll').innerHTML=`<div class="empty-hint">// click node → inspect<br>// double-click → breakdown</div>`;
+  computeAll(); render();
+}
+
+// ─── Breakdown ────────────────────────────────────────────────────────────────
+function openBreakdown(k){
+  breakdownParent=k; pendingChildren=[{key:'',priority:1,phase:null}];
+  $('modal-title').textContent=`ブレークダウン: "${trunc(k,22)}"`;
+  renderModal(); $('overlay').classList.add('open');
+  setTimeout(()=>{ const el=document.querySelector('#modal-body input[type=text]'); if(el)el.focus(); },80);
+}
+function renderModal(){
+  $('modal-body').innerHTML=pendingChildren.map((c,i)=>`
+<div class="child-card">
+  <div class="child-card-title">子タスク ${i+1}</div>
+  ${pendingChildren.length>1?`<button class="rm-child" onclick="removeChild(${i})">×</button>`:''}
+  <div class="form-col">
+    <div class="field"><label>Task Key</label>
+      <input type="text" value="${esc(c.key)}" oninput="pendingChildren[${i}].key=this.value"
+        placeholder="タスク名" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();confirmBreakdown();}">
+    </div>
+    <div class="row2">
+      <div class="field"><label>Priority</label>
+        <select onchange="pendingChildren[${i}].priority=parseInt(this.value)">
+          ${[1,2,3,4,5].map(p=>`<option value="${p}"${c.priority===p?' selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Phase</label>
+        <input type="number" min="1" placeholder="none" value="${c.phase!=null?c.phase:''}"
+          oninput="pendingChildren[${i}].phase=this.value?parseInt(this.value):null"
+          onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();confirmBreakdown();}">
+      </div>
+    </div>
+  </div>
+</div>`).join('');
+}
+
+function addChildField(){ pendingChildren.push({key:'',priority:1,phase:null}); renderModal(); }
+function removeChild(i){ pendingChildren.splice(i,1); renderModal(); }
+function closeModal(){ $('overlay').classList.remove('open'); breakdownParent=null; pendingChildren=[]; }
+function confirmBreakdown(){
+  const valid=pendingChildren.filter(c=>c.key.trim());
+  if(!valid.length){ alert('タスク名を入力してください'); return; }
+  valid.forEach(c=>{
+    let k=c.key.trim(),n=1;
+    while(tree.nodes[k]) k=c.key.trim()+'-'+(n++);
+    tree.nodes[k]={key:k,priority:c.priority,phase:c.phase,parent:breakdownParent,has_child:false,pomodoro:0,is_finished:false,note:''};
+  });
+  expandedKey=breakdownParent;
+  computeAll(); render(); closeModal();
+}
+
+$('overlay').addEventListener('click',e=>{if(e.target===$('overlay'))closeModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+// ─── Random ───────────────────────────────────────────────────────────────────
+function weightedPick(pool){
+  // phase優先: phaseが設定されているものがあれば最小phaseのみ対象
+  const phases=pool.map(k=>tree.nodes[k].phase).filter(p=>p!=null);
+  const minPhase=phases.length?Math.min(...phases):null;
+  const candidates=minPhase!=null?pool.filter(k=>(tree.nodes[k].phase??null)===minPhase):pool;
+  // priority重み: priority p → (1/3)^(p-1) * (2/3)
+  const ws=candidates.map(k=>Math.pow(1/3,((tree.nodes[k].priority??3)-1))*(2/3));
+  const tot=ws.reduce((s,w)=>s+w,0);
+  if(tot===0) return candidates[Math.floor(Math.random()*candidates.length)];
+  let r=Math.random()*tot;
+  for(let i=0;i<candidates.length;i++){r-=ws[i];if(r<=0)return candidates[i];}
+  return candidates[candidates.length-1];
+}
+
+function pickRandom(mode){
+  computeAll();
+  const allLeaves=getLeaves();
+  if(!allLeaves.length){alert('未完了の葉ノードがありません');return;}
+
+  const base=selectedKey;
+  const basePar=(base&&tree.nodes[base])?tree.nodes[base].parent:null;
+
+  // モードに応じてプールを絞る
+  let pool;
+  if(mode==='all'){
+    pool=allLeaves;
+  } else if(mode==='brother'){
+    const p=basePar;
+    pool=(p!=null)?allLeaves.filter(k=>tree.nodes[k].parent===p):allLeaves;
+    if(!pool.length) pool=allLeaves;
+  } else if(mode==='jump'){
+    const p=basePar;
+    pool=(p!=null)?allLeaves.filter(k=>tree.nodes[k].parent!==p):allLeaves;
+    if(!pool.length) pool=allLeaves;
+  } else {
+    pool=allLeaves;
+  }
+
+  // 現在選択中ノードを除外（2件以上ある場合のみ）
+  const poolWithout=pool.filter(k=>k!==base);
+  if(poolWithout.length>0) pool=poolWithout;
+
+  const picked=weightedPick(pool);
+  randomKey=picked;
+  selectedKey=picked;
+  expandedKey=picked;
+  render(); showDetail(picked);
+}
+
+function markDone(k){
+  if(!tree.nodes[k])return;
+  tree.nodes[k].is_finished=true;
+  computeAll(); render(); showDetail(k);
+}
+function toggleDone(k){
+  if(!tree.nodes[k])return;
+  tree.nodes[k].is_finished=!tree.nodes[k].is_finished;
+  computeAll(); render(); showDetail(k);
+}
+
+// ─── Project / Import / Export ────────────────────────────────────────────────
+function addRoot(){
+  const name=prompt('プロジェクト名を入力:'); if(!name)return;
+  let k=name.trim(),n=1; while(tree.nodes[k])k=name.trim()+'-'+(n++);
+  tree.nodes[k]={key:k,priority:1,phase:null,parent:null,has_child:false,pomodoro:0,is_finished:false,note:''};
+  tree.roots.push(k); computeAll(); render(); selectedKey=k; showDetail(k);
+}
+function exportJSON(){
+  computeAll();
+  const b=new Blob([JSON.stringify(tree,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='task-tree.json'; a.click();
+}
+function importJSON(){ $('file-in').click(); }
+function onFile(e){
+  const f=e.target.files[0]; if(!f)return;
+  loadFile(f); e.target.value='';
+}
+
+// ─── Splash screen ────────────────────────────────────────────────────────────
+function showSplash(){
+  $('splash').style.display='flex';
+  // Drag & drop on splash
+  const splash=$('splash');
+  splash.addEventListener('dragover',e=>{e.preventDefault();splash.style.outline='2px dashed #5b8dee';});
+  splash.addEventListener('dragleave',()=>splash.style.outline='');
+  splash.addEventListener('drop',e=>{
+    e.preventDefault(); splash.style.outline='';
+    const f=e.dataTransfer.files[0];
+    if(f&&f.name.endsWith('.json')) loadFile(f);
+  });
+}
+function hideSplash(){
+  $('splash').style.display='none';
+  computeAll(); render();
+  updateLSUI();
+}
+function newProjectFromSplash(){
+  hideSplash();
+  const name=prompt('プロジェクト名を入力:'); if(!name){ showSplash(); return; }
+  let k=name.trim(),n=1; while(tree.nodes[k])k=name.trim()+'-'+(n++);
+  tree.nodes[k]={key:k,priority:1,phase:null,parent:null,has_child:false,pomodoro:0,is_finished:false,note:''};
+  tree.roots.push(k); computeAll(); render(); selectedKey=k; showDetail(k);
+}
+function loadFile(f){
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const p=JSON.parse(ev.target.result);
+      Object.values(p.nodes||{}).forEach(n=>{if(n.note===undefined)n.note='';});
+      tree=p; selectedKey=null; randomKey=null; expandedKey=null;
+      $('detail-scroll').innerHTML=`<div class="empty-hint">// click node → inspect<br>// double-click → breakdown</div>`;
+      hideSplash(); setMode('run');
+    }catch{alert('JSONの読み込みに失敗しました');}
+  };
+  r.readAsText(f);
+}
+
+// ─── LocalStorage ────────────────────────────────────────────────────────────
+const LS_KEY = 'task-tree-data';
+const LS_META_KEY = 'task-tree-meta';
+let autoSave = true;
+
+function lsSave(){
+  if(!autoSave) return;
+  try{
+    computeAll();
+    localStorage.setItem(LS_KEY, JSON.stringify(tree));
+    const meta = { savedAt: new Date().toISOString(), roots: tree.roots };
+    localStorage.setItem(LS_META_KEY, JSON.stringify(meta));
+  }catch(e){ console.warn('LS save failed:', e); }
+}
+
+function lsHasSave(){
+  try{ return !!localStorage.getItem(LS_KEY); }catch{ return false; }
+}
+
+function lsLoad(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return null;
+    const p = JSON.parse(raw);
+    Object.values(p.nodes||{}).forEach(n=>{ if(n.note===undefined) n.note=''; });
+    return p;
+  }catch{ return null; }
+}
+
+function lsMeta(){
+  try{ return JSON.parse(localStorage.getItem(LS_META_KEY)||'null'); }catch{ return null; }
+}
+
+function restoreFromLS(){
+  const data = lsLoad();
+  if(!data){ alert('保存データが見つかりません'); return; }
+  tree = data;
+  selectedKey=null; randomKey=null; expandedKey=null;
+  $('detail-scroll').innerHTML=`<div class="empty-hint">// click node → inspect<br>// double-click → breakdown</div>`;
+  hideSplash(); setMode('run');
+}
+
+function toggleAutoSave(){
+  autoSave = !autoSave;
+  if(autoSave) lsSave();
+  updateLSUI();
+}
+
+function updateLSUI(){
+  const btn = $('ls-toggle-btn');
+  const label = $('ls-toggle-label');
+  if(autoSave){
+    btn.style.background = 'rgba(82,194,133,.18)';
+    btn.style.color = '#7ddb9e';
+    btn.style.borderColor = 'rgba(82,194,133,.3)';
+    label.textContent = '自動保存: ON';
+  } else {
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    label.textContent = '自動保存: OFF';
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+// Check LS on startup and show restore button if data exists
+if(lsHasSave()){
+  const meta = lsMeta();
+  const btn = $('ls-restore-btn');
+  btn.style.display = 'flex';
+  if(meta && meta.savedAt){
+    const d = new Date(meta.savedAt);
+    $('ls-restore-label').innerHTML =
+      `前回の続き<br><span style="font-size:11px;opacity:0.7">${d.toLocaleDateString('ja-JP')} ${d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>`;
+  }
+}
+// ═══════════════ Program Counter (focus / run mode) ═══════════════
+let mode = 'plan';
+let pcCurrent = null;
+let pcTimer = { dur: 25, left: 25*60, running: false, id: null, phase: 'idle' }; // phase: idle|running|logging
+const PC_C = 2 * Math.PI * 80;
+
+function fmtPC(s){ return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+function pcGoalPath(k){ const p=[]; let c=tree.nodes[k]?.parent; while(c){ p.unshift(c); c=tree.nodes[c]?.parent; } return p; }
+function pcValidCurrent(){ const n=tree.nodes[pcCurrent]; return !!(n && !n.has_child && !n.is_finished); }
+
+function setMode(m){
+  mode = m; pcStopTimer();
+  if(m!=='run'){ stopAmbient(); }
+  document.body.classList.toggle('run-mode', m==='run');
+  $('pc-view').classList.toggle('active', m==='run');
+  const rb=$('mode-run'), pb=$('mode-plan');
+  if(rb&&pb){ rb.classList.toggle('on', m==='run'); pb.classList.toggle('on', m==='plan'); }
+  if(m==='run'){
+    if(!pcValidCurrent()) pcPickNext();
+    else { pcResetTimer(); renderPC(); }
+  } else { computeAll(); render(); }
+}
+
+function pcResetTimer(){ pcStopTimer(); pcTimer.left = pcTimer.dur*60; pcTimer.phase='idle'; }
+function pcStopTimer(){ if(pcTimer.id){ clearInterval(pcTimer.id); pcTimer.id=null; } pcTimer.running=false; }
+function pcSetDur(d){ if(pcTimer.running) return; pcTimer.dur=d; pcTimer.left=d*60; renderPC(); }
+
+function pcStart(){
+  if(pcTimer.phase==='logging') return;
+  if(pcTimer.running){ pcStopTimer(); renderPC(); return; }
+  pcTimer.phase='running'; pcTimer.running=true;
+  seStart();
+  pcTimer.id=setInterval(()=>{
+    pcTimer.left--;
+    if(pcTimer.left<=0){ pcStopTimer(); pcTimer.left=0; pcComplete(); return; }
+    pcUpdateTimerDOM();
+  },1000);
+  renderPC();
+}
+function pcUpdateTimerDOM(){
+  const t=$('pc-time'); if(t) t.textContent=fmtPC(pcTimer.left);
+  const fg=$('pc-ring-fg'); if(fg) fg.setAttribute('stroke-dashoffset', PC_C*(1-pcTimer.left/(pcTimer.dur*60)));
+}
+function pcAccrue(playSE){
+  if(pcCurrent && tree.nodes[pcCurrent]) tree.nodes[pcCurrent].pomodoro=(tree.nodes[pcCurrent].pomodoro||0)+1;
+  if(playSE) seEnd();
+  pcTimer.phase='logging'; computeAll(); lsSave(); renderPC();
+}
+function pcComplete(){ pcAccrue(true); }                 // timer ran out
+function pcAddPomo(){ pcStopTimer(); pcAccrue(false); }   // manual +1
+function pcSubmitLog(action){
+  const v=($('pc-lognote')?.value||'').trim();
+  if(v && pcCurrent && tree.nodes[pcCurrent]){
+    const d=new Date();
+    const stamp=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const prev=tree.nodes[pcCurrent].note||'';
+    tree.nodes[pcCurrent].note=`[${stamp} 🍅] ${v}`+(prev?`\n${prev}`:'');
+  }
+  pcTimer.phase='idle';
+  if(action==='continue'){ pcResetTimer(); renderPC(); lsSave(); }   // 同一タスクを継続
+  else { pcPickNext('jump'); }                                        // ランダムジャンプ
+}
+function pcDone(){ if(pcCurrent) markDone(pcCurrent); pcPickNext(); }
+
+// ── Audio: ambient soundscapes + SE (Web Audio, no external assets) ──
+let actx=null, ambGain=null, ambNodes=[], ambMode='none', crackleTimer=null;
+function ensureCtx(){
+  try{
+    if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+  }catch(e){ actx=null; }
+  return actx;
+}
+function noiseBuffer(ctx, sec){
+  const len=Math.floor(ctx.sampleRate*sec), buf=ctx.createBuffer(1,len,ctx.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+  return buf;
+}
+function stopAmbient(){
+  if(crackleTimer){ clearTimeout(crackleTimer); crackleTimer=null; }
+  ambNodes.forEach(n=>{ try{n.stop&&n.stop();}catch(e){} try{n.disconnect&&n.disconnect();}catch(e){} });
+  ambNodes=[];
+  if(ambGain){ try{ambGain.disconnect();}catch(e){} ambGain=null; }
+  ambMode='none';
+}
+function startAmbient(m){
+  if(!ensureCtx()) return;
+  stopAmbient(); ambMode=m;
+  ambGain=actx.createGain(); ambGain.gain.value=0.0001; ambGain.connect(actx.destination);
+  const now=actx.currentTime;
+  if(m==='white'){
+    const s=actx.createBufferSource(); s.buffer=noiseBuffer(actx,2); s.loop=true;
+    const g=actx.createGain(); g.gain.value=0.18; s.connect(g); g.connect(ambGain); s.start();
+    ambNodes.push(s,g); ambGain.gain.linearRampToValueAtTime(0.6, now+1.0);
+  } else if(m==='waves'){
+    const s=actx.createBufferSource(); s.buffer=noiseBuffer(actx,3); s.loop=true;
+    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=520;
+    const g=actx.createGain(); g.gain.value=0.34;
+    const lfo=actx.createOscillator(); lfo.type='sine'; lfo.frequency.value=0.13;
+    const lfoG=actx.createGain(); lfoG.gain.value=0.26;
+    s.connect(lp); lp.connect(g); g.connect(ambGain); lfo.connect(lfoG); lfoG.connect(g.gain);
+    s.start(); lfo.start(); ambNodes.push(s,lp,g,lfo,lfoG);
+    ambGain.gain.linearRampToValueAtTime(0.95, now+1.4);
+  } else if(m==='fire'){
+    const s=actx.createBufferSource(); s.buffer=noiseBuffer(actx,3); s.loop=true;
+    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=400;
+    const g=actx.createGain(); g.gain.value=0.5; s.connect(lp); lp.connect(g); g.connect(ambGain);
+    s.start(); ambNodes.push(s,lp,g); ambGain.gain.linearRampToValueAtTime(0.8, now+1.0);
+    const crackle=()=>{
+      if(ambMode!=='fire'||!actx){ return; }
+      const t=actx.currentTime, dur=0.025+Math.random()*0.05;
+      const cs=actx.createBufferSource(); cs.buffer=noiseBuffer(actx,0.12);
+      const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1100+Math.random()*2400; bp.Q.value=0.9;
+      const cg=actx.createGain();
+      cg.gain.setValueAtTime(0.0001,t);
+      cg.gain.exponentialRampToValueAtTime(0.35+Math.random()*0.5,t+0.004);
+      cg.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      cs.connect(bp); bp.connect(cg); cg.connect(ambGain);
+      cs.start(t); cs.stop(t+dur+0.03);
+      crackleTimer=setTimeout(crackle, 35+Math.random()*340);
+    };
+    crackle();
+  }
+}
+function setAmbient(m){
+  if(ambMode===m){ stopAmbient(); renderPC(); return; }   // toggle off
+  startAmbient(m); renderPC();
+}
+function tone(freqs, step, vol){
+  if(!ensureCtx()) return;
+  const t0=actx.currentTime;
+  freqs.forEach((f,i)=>{
+    const o=actx.createOscillator(); o.type='sine'; o.frequency.value=f;
+    const g=actx.createGain(); const st=t0+i*step;
+    g.gain.setValueAtTime(0.0001,st);
+    g.gain.exponentialRampToValueAtTime(vol,st+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,st+step*0.95);
+    o.connect(g); g.connect(actx.destination); o.start(st); o.stop(st+step+0.03);
+  });
+}
+function seStart(){ tone([523.25, 784], 0.11, 0.20); }                 // ▲ rising two-tone
+function seEnd(){ tone([784, 1046.5, 1318.5], 0.15, 0.26); }           // ▲▲▲ ascending chime
+
+function pcPickNext(pmode){
+  computeAll();
+  const leaves=getLeaves();
+  if(!leaves.length){ pcCurrent=null; pcResetTimer(); renderPC(); lsSave(); return; }
+  let pool=leaves;
+  const par=tree.nodes[pcCurrent]?.parent;
+  if(pmode==='brother' && par!=null){ const b=leaves.filter(k=>tree.nodes[k].parent===par); if(b.length) pool=b; }
+  if(pmode==='jump'    && par!=null){ const j=leaves.filter(k=>tree.nodes[k].parent!==par); if(j.length) pool=j; }
+  const without=pool.filter(k=>k!==pcCurrent); if(without.length) pool=without;
+  pcCurrent=weightedPick(pool);
+  selectedKey=pcCurrent; expandedKey=pcCurrent;   // keep plan view in sync
+  pcResetTimer(); renderPC(); lsSave();
+}
+
+function pcLoadAndRun(k){ pcCurrent=k; setMode('run'); }
+function pcToPlan(){
+  setMode('plan');
+  if(pcCurrent && tree.nodes[pcCurrent]){ selectedKey=pcCurrent; expandedKey=pcCurrent; render(); showDetail(pcCurrent); }
+}
+
+function pcRing(){
+  const off=PC_C*(1-pcTimer.left/(pcTimer.dur*60));
+  return `<svg width="184" height="184" viewBox="0 0 184 184">
+    <circle cx="92" cy="92" r="80" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="4"/>
+    <circle id="pc-ring-fg" cx="92" cy="92" r="80" fill="none" stroke="var(--yellow)" stroke-width="4"
+      stroke-linecap="round" stroke-dasharray="${PC_C}" stroke-dashoffset="${off}"
+      style="transition:stroke-dashoffset .95s linear"/>
+  </svg>
+  <div class="pc-ring-time"><div class="t" id="pc-time">${fmtPC(pcTimer.left)}</div><div class="s">focus</div></div>`;
+}
+
+function renderPC(){
+  const v=$('pc-view'); if(!v) return;
+
+  if(!pcCurrent || !tree.nodes[pcCurrent]){
+    v.innerHTML=`<div class="pc-empty">実行可能なブロックがない。<br>計画モードで分解せよ。</div>
+      <div class="pc-acts" style="margin-top:26px"><button class="btn primary pc-big" onclick="setMode('plan')">計画モードへ</button></div>`;
+    return;
+  }
+
+  const n=tree.nodes[pcCurrent];
+  const path=pcGoalPath(pcCurrent);
+  const crumb=path.length?`<div class="pc-crumb">${path.map(p=>`<b>${esc(p)}</b>`).join(' <span style="opacity:.4">›</span> ')}</div>`:'';
+
+  if(pcTimer.phase==='logging'){
+    v.innerHTML=`${crumb}
+      <div class="pc-logbox">
+        <div class="pc-instruction" style="font-size:23px;margin-bottom:18px">🍅 ＋1 ポモドーロ。1行だけ記録しろ。</div>
+        <div class="sec-lbl" style="text-align:left;margin-bottom:7px">観測だけ — 判断は書くな</div>
+        <textarea id="pc-lognote" rows="3" placeholder="気づき・違和感・残りの手触り（空欄でスキップ可）"></textarea>
+        <div class="pc-acts" style="margin-top:16px">
+          <button class="btn success pc-big" onclick="pcSubmitLog('jump')">→ 次へ</button>
+          <button class="btn pc-big" onclick="pcSubmitLog('continue')">↻ 継続</button>
+        </div>
+      </div>`;
+    setTimeout(()=>{ const el=$('pc-lognote'); if(el) el.focus(); }, 60);
+    return;
+  }
+
+  const pomo=n.pomodoro>0 ? '🍅'.repeat(Math.min(n.pomodoro,8))+(n.pomodoro>8?` ×${n.pomodoro}`:'') : '';
+  const playLabel = pcTimer.running ? '⏸ 一時停止' : (pcTimer.left < pcTimer.dur*60 ? '▶ 再開' : '▶ 開始');
+
+  v.innerHTML=`${crumb}
+    <div class="pc-ring-wrap">${pcRing()}</div>
+    <div class="pc-instruction">${esc(n.key)}</div>
+    <div class="pc-pomo">${pomo}</div>
+    <div class="pc-acts">
+      <button class="btn warn pc-big" onclick="pcStart()">${playLabel}</button>
+      <button class="btn success pc-big" onclick="pcAddPomo()">🍅++</button>
+    </div>
+    <div class="pc-acts" style="margin-top:12px">
+      <button class="btn pc-big" onclick="pcPickNext('brother')"><i class="ti ti-arrows-shuffle"></i> ブラザー</button>
+      <button class="btn pc-big" onclick="pcPickNext('jump')"><i class="ti ti-arrow-right"></i> ジャンプ</button>
+    </div>
+    <div class="pc-amb">
+      <button class="${ambMode==='fire'?'on':''}" onclick="setAmbient('fire')">🔥 焚き火</button>
+      <button class="${ambMode==='waves'?'on':''}" onclick="setAmbient('waves')">🌊 波の音</button>
+      <button class="${ambMode==='white'?'on':''}" onclick="setAmbient('white')">☁ ホワイトノイズ</button>
+    </div>`;
+}
+
+showSplash();
+</script>
+</body>
+</html>
