@@ -400,6 +400,21 @@ let pendingChildren = [];
 const $  = id => document.getElementById(id);
 function svgEl(t){ return document.createElementNS('http://www.w3.org/2000/svg',t); }
 function trunc(s,n){ return s.length>n?s.slice(0,n-1)+'…':s; }
+// 全角/半角を考慮して、与えられたピクセル幅に収まるよう末尾を…で省略する
+function charW(ch, fs){
+  const c=ch.codePointAt(0);
+  const full = (c>=0x1100&&c<=0x115F)||(c>=0x2E80&&c<=0xA4CF)||(c>=0xAC00&&c<=0xD7A3)||
+               (c>=0xF900&&c<=0xFAFF)||(c>=0xFE30&&c<=0xFE4F)||(c>=0xFF00&&c<=0xFF60)||
+               (c>=0xFFE0&&c<=0xFFE6)||(c>=0x3000&&c<=0x30FF)||(c>=0x31F0&&c<=0x31FF);
+  return fs*(full?1.0:0.56);
+}
+function fitLabel(s, maxW, fs){
+  let total=0; for(const ch of s) total+=charW(ch,fs);
+  if(total<=maxW) return s;
+  const ell=fs*0.6; let w=0, out='';
+  for(const ch of s){ const cw=charW(ch,fs); if(w+cw+ell>maxW) break; w+=cw; out+=ch; }
+  return out+'…';
+}
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function esc2(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function urls(t){ return t?[...new Set((t.match(/https?:\/\/[^\s\n]+/g)||[]))]: []; }
@@ -569,6 +584,7 @@ function buildNodeGroup(k, p, isNew, originPos){
   const g=svgEl('g');
   g.style.cursor='pointer';
   g.dataset.key=k;
+  const ttl=svgEl('title'); ttl.textContent=k; g.appendChild(ttl);
 
   // Starting transform for animation
   const tx0 = isNew && originPos ? originPos.x : p.x;
@@ -610,7 +626,7 @@ function buildNodeGroup(k, p, isNew, originPos){
   label.setAttribute('text-anchor','middle'); label.setAttribute('dominant-baseline','central');
   label.setAttribute('fill',c.t); label.setAttribute('font-size','12');
   label.setAttribute('font-weight','500'); label.setAttribute('font-family',"'Sora',sans-serif");
-  label.textContent=trunc(k,16); g.appendChild(label);
+  label.textContent=fitLabel(k, NW-18, 12); g.appendChild(label);
 
   if(n.pomodoro>0){
     const pm=svgEl('text'); pm.setAttribute('x',NW/2); pm.setAttribute('y',NH-8);
@@ -938,7 +954,7 @@ function renderModal(){
     </div>
     <div class="row2">
       <div class="field"><label>Priority</label>
-        <select onchange="pendingChildren[${i}].priority=parseInt(this.value)">
+        <select onchange="pendingChildren[${i}].priority=parseInt(this.value)" onkeydown="bdKey(event,${i})">
           ${[1,2,3,4,5].map(p=>`<option value="${p}"${c.priority===p?' selected':''}>${p}</option>`).join('')}
         </select>
       </div>
