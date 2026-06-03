@@ -268,9 +268,12 @@ body.run-mode #plan-view { display: none; }
 .pc-instruction {
   font-family: var(--sans); font-weight: 600; font-size: 32px; line-height: 1.3;
   color: var(--t1); max-width: 640px; margin-bottom: 12px; word-break: break-word;
-  animation: pcRise .45s ease both;
 }
+.pc-instruction.anim { animation: pcRise .45s ease both; }
 @keyframes pcRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.pc-subnav { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+.pc-subnav button { background: transparent; border: 1px solid var(--b2); color: var(--t3); border-radius: var(--rsm); padding: 5px 12px; cursor: pointer; font-family: var(--mono); font-size: 11px; transition: color .12s, border-color .12s; }
+.pc-subnav button:hover { color: var(--t2); border-color: var(--b3); }
 .pc-pomo { font-size: 14px; color: var(--yellow); letter-spacing: 1px; margin-bottom: 28px; min-height: 18px; }
 
 .pc-dur { display: inline-flex; border: 1px solid var(--b2); border-radius: var(--rsm); overflow: hidden; margin-bottom: 26px; }
@@ -652,7 +655,8 @@ function buildNodeGroup(k, p, isNew, originPos){
       setTimeout(()=>{
         if(Date.now()-lt<340)return;
         if(tree.nodes[k]?.has_child && expandedKey===k) return;  // 展開済みノードのクリックは無効
-        if(tree.nodes[k]?.has_child) expandedKey=k;
+        if(tree.nodes[k]?.has_child) expandedKey=k;               // 親ノード → それを展開
+        else expandedKey = tree.nodes[k]?.parent ?? null;         // 葉 → 親を展開し、同階層の他の枝は閉じる
         selectedKey=k;
         render(); showDetail(k);
       },350);
@@ -1197,6 +1201,7 @@ if(lsHasSave()){
 // ═══════════════ Program Counter (focus / run mode) ═══════════════
 let mode = 'plan';
 let pcCurrent = null;
+let pcLastKey = null;   // 直近にラベル表示したノード（変化検出用）
 let pcTimer = { dur: 25, left: 25*60, running: false, id: null, phase: 'idle' }; // phase: idle|running|logging
 const PC_C = 2 * Math.PI * 80;
 
@@ -1254,7 +1259,7 @@ function pcSubmitLog(action){
   }
   pcTimer.phase='idle';
   if(action==='continue'){ pcResetTimer(); renderPC(); lsSave(); }   // 同一タスクを継続
-  else { pcPickNext('jump'); }                                        // ランダムジャンプ
+  else { pcPickNext('any'); }                                         // 親を問わないジャンプ
 }
 function pcDone(){ if(pcCurrent) markDone(pcCurrent); pcPickNext(); }
 
@@ -1343,8 +1348,9 @@ function pcPickNext(pmode){
   if(!leaves.length){ pcCurrent=null; pcResetTimer(); renderPC(); lsSave(); return; }
   let pool=leaves;
   const par=tree.nodes[pcCurrent]?.parent;
-  if(pmode==='brother' && par!=null){ const b=leaves.filter(k=>tree.nodes[k].parent===par); if(b.length) pool=b; }
-  if(pmode==='jump'    && par!=null){ const j=leaves.filter(k=>tree.nodes[k].parent!==par); if(j.length) pool=j; }
+  if(pmode==='sibling' && par!=null){ const b=leaves.filter(k=>tree.nodes[k].parent===par); if(b.length) pool=b; }
+  else if(pmode==='parent' && par!=null){ const j=leaves.filter(k=>tree.nodes[k].parent!==par); if(j.length) pool=j; }
+  // 'any'（既定）→ 親で絞らず全葉から
   const without=pool.filter(k=>k!==pcCurrent); if(without.length) pool=without;
   pcCurrent=weightedPick(pool);
   selectedKey=pcCurrent; expandedKey=pcCurrent;   // keep plan view in sync
@@ -1398,18 +1404,21 @@ function renderPC(){
 
   const pomo=n.pomodoro>0 ? '🍅'.repeat(Math.min(n.pomodoro,8))+(n.pomodoro>8?` ×${n.pomodoro}`:'') : '';
   const playLabel = pcTimer.running ? '⏸ 一時停止' : (pcTimer.left < pcTimer.dur*60 ? '▶ 再開' : '▶ 開始');
+  const anim = (pcCurrent!==pcLastKey) ? ' anim' : '';   // 選択ノードが変化した時だけアニメ
+  pcLastKey = pcCurrent;
 
   v.innerHTML=`${crumb}
     <div class="pc-ring-wrap">${pcRing()}</div>
-    <div class="pc-instruction">${esc(n.key)}</div>
+    <div class="pc-instruction${anim}">${esc(n.key)}</div>
     <div class="pc-pomo">${pomo}</div>
     <div class="pc-acts">
       <button class="btn warn pc-big" onclick="pcStart()">${playLabel}</button>
-      <button class="btn success pc-big" onclick="pcAddPomo()">🍅++</button>
+      <button class="btn pc-big" onclick="pcAddPomo()">＋🍅</button>
+      <button class="btn success pc-big" onclick="pcPickNext('any')"><i class="ti ti-arrow-right"></i> 次へ</button>
     </div>
-    <div class="pc-acts" style="margin-top:12px">
-      <button class="btn pc-big" onclick="pcPickNext('brother')"><i class="ti ti-arrows-shuffle"></i> ブラザー</button>
-      <button class="btn pc-big" onclick="pcPickNext('jump')"><i class="ti ti-arrow-right"></i> ジャンプ</button>
+    <div class="pc-subnav">
+      <button onclick="pcPickNext('sibling')"><i class="ti ti-arrows-shuffle"></i> sibling</button>
+      <button onclick="pcPickNext('parent')"><i class="ti ti-arrow-ramp-right"></i> parent</button>
     </div>
     <div class="pc-amb">
       <button class="${ambMode==='fire'?'on':''}" onclick="setAmbient('fire')">🔥 焚き火</button>
