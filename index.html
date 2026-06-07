@@ -487,7 +487,7 @@ function layoutVis(){
     const tot=hs.reduce((s,h)=>s+h,0)+VGAP*(ch.length-1);
     const selfH=Math.max(NH,tot);
     let cy=y+(selfH-tot)/2;
-    ch.forEach((c,i)=>{ place(c,x+NW+HGAP,cy+hs[i]/2-NH/2); cy+=hs[i]+VGAP; });
+    ch.forEach((c,i)=>{ place(c,x+NW+HGAP,cy); cy+=hs[i]+VGAP; });
     // Active-path parents align to their topmost child (ch[0] is always the active child)
     if(ap.has(k) && ch.length){
       pos[k]={x, y:pos[ch[0]].y};
