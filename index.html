@@ -471,10 +471,16 @@ function visibleNodes(){
 // ─── Layout: left → right ────────────────────────────────────────────────────
 const NW=148,NH=46,HGAP=58,VGAP=14;
 
-function subH(k,visSet){
+function subH(k,visSet,ap){
   const ch=sortedCh(k).filter(c=>visSet.has(c));
   if(!ch.length)return NH;
-  return ch.reduce((s,c)=>s+subH(c,visSet),0)+VGAP*(ch.length-1);
+  // 同列に積む高さ: アクティブな子はNHだけ確保（部分木は右へ伸びるので縦は占めない）
+  let stack=0;
+  ch.forEach((c,i)=>{ stack+=(ap.has(c)?NH:subH(c,visSet,ap)); if(i<ch.length-1)stack+=VGAP; });
+  // アクティブな子の部分木は下へ伸びうるので、その縦の広がりも確保する
+  const activeCh=ch.find(c=>ap.has(c));
+  const activeExtent=activeCh?subH(activeCh,visSet,ap):0;
+  return Math.max(stack,activeExtent);
 }
 
 function layoutVis(){
@@ -483,19 +489,16 @@ function layoutVis(){
   function place(k,x,y){
     const ch=sortedCh(k).filter(c=>visSet.has(c));
     if(!ch.length){pos[k]={x,y};return NH;}
-    const hs=ch.map(c=>subH(c,visSet));
-    const tot=hs.reduce((s,h)=>s+h,0)+VGAP*(ch.length-1);
-    const selfH=Math.max(NH,tot);
-    let cy=y+(selfH-tot)/2;
-    ch.forEach((c,i)=>{ place(c,x+NW+HGAP,cy); cy+=hs[i]+VGAP; });
-    // Active-path parents align to their topmost child (ch[0] is always the active child)
-    if(ap.has(k) && ch.length){
+    let cy=y;
+    ch.forEach(c=>{ place(c,x+NW+HGAP,cy); cy+=(ap.has(c)?NH:subH(c,visSet,ap))+VGAP; });
+    // 唯一展開されるアクティブパスを上端に揃え、兄弟はその直下に詰める
+    if(ap.has(k)){
       pos[k]={x, y:pos[ch[0]].y};
     } else {
       const cys=ch.map(c=>pos[c].y+NH/2);
       pos[k]={x, y:(Math.min(...cys)+Math.max(...cys))/2-NH/2};
     }
-    return selfH;
+    return subH(k,visSet,ap);
   }
 
   const sortedRoots=[...tree.roots].sort((a,b)=>{
@@ -505,7 +508,7 @@ function layoutVis(){
 
   // First pass: place everything starting at y=20
   let oy=20;
-  sortedRoots.forEach(r=>{ const h=subH(r,visSet); place(r,20,oy); oy+=Math.max(h,NH)+VGAP*4; });
+  sortedRoots.forEach(r=>{ const h=subH(r,visSet,ap); place(r,20,oy); oy+=Math.max(h,NH)+VGAP*4; });
 
   // Second pass: shift the active project's subtree up so its topmost active-path
   // node lands at y=20, keeping everything else below it
