@@ -356,6 +356,7 @@ body.run-mode #plan-view { display: none; }
     <button id="mode-plan" class="on" onclick="setMode('plan')">計画</button>
   </div>
   <button class="btn" onclick="addRoot()"><i class="ti ti-plus"></i> New Project</button>
+  <button class="btn" onclick="purgeCompleted()" title="完了したタスクをデータから削除"><i class="ti ti-refresh"></i> 完了を整理</button>
   <button class="btn" onclick="importJSON()"><i class="ti ti-upload"></i> Import</button>
   <button class="btn" onclick="exportJSON()"><i class="ti ti-download"></i> Export</button>
   <button class="btn" id="ls-toggle-btn" onclick="toggleAutoSave()" title="LocalStorage自動保存"><i class="ti ti-device-floppy"></i> <span id="ls-toggle-label">自動保存: OFF</span></button>
@@ -940,6 +941,27 @@ function delNode(k){
   if(randomKey===k) randomKey=null;
   $('detail-scroll').innerHTML=`<div class="empty-hint">// click node → inspect<br>// double-click → breakdown</div>`;
   computeAll(); render();
+}
+
+function purgeCompleted(){
+  computeAll();
+  const completedLeaves = Object.values(tree.nodes).filter(n=>!n.has_child && n.is_finished).length;
+  const completed = Object.keys(tree.nodes).filter(k=>tree.nodes[k].is_finished);
+  if(!completed.length){ alert('完了したタスクはありません。'); return; }
+  if(!confirm(`完了したタスク ${completedLeaves} 件をデータから削除します。\nこの操作は取り消せません。よろしいですか？`)) return;
+  // 完了ノードのうち最上位のもの（親が未完了 or root）＋その部分木を削除する
+  const cset = new Set(completed);
+  const tops = completed.filter(k=>{ const p=tree.nodes[k].parent; return p==null || !cset.has(p); });
+  const del = key=>{ getChildren(key).forEach(del); delete tree.nodes[key]; };
+  tops.forEach(del);
+  tree.roots = tree.roots.filter(r=>tree.nodes[r]);
+  if(!tree.nodes[selectedKey]) selectedKey=null;
+  if(!tree.nodes[expandedKey]) expandedKey=null;
+  if(!tree.nodes[randomKey]) randomKey=null;
+  if(!tree.nodes[pcCurrent]) pcCurrent=null;
+  $('detail-scroll').innerHTML=`<div class="empty-hint">// click node → inspect<br>// double-click → breakdown<br>// right-click → delete</div>`;
+  computeAll(); render(); lsSave();
+  if(mode==='run'){ if(!pcValidCurrent()) pcPickNext('any'); else renderPC(); }
 }
 
 // ─── Breakdown ────────────────────────────────────────────────────────────────
