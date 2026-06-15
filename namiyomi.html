@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>なみ読み</title>
+<style>
+  :root{
+    --read-size: 1.7rem;
+    --ease: cubic-bezier(.22,.61,.36,1);
+  }
+  [data-theme="dark"]{
+    --bg-center:#23302f;
+    --bg-edge:#141c1d;
+    --surface:#2a3837;
+    --ink:#ece4d3;
+    --ink-soft:#a9b3ad;
+    --ink-faint:#56635f;
+    --line:#3a4847;
+    --accent:#e0a94a;
+    --accent-soft:rgba(224,169,74,.16);
+    --shadow:rgba(0,0,0,.35);
+  }
+  [data-theme="light"]{
+    --bg-center:#eef0e8;
+    --bg-edge:#dadecf;
+    --surface:#f6f7f1;
+    --ink:#2a322f;
+    --ink-soft:#5d665f;
+    --ink-faint:#a3aa9f;
+    --line:#cfd4c5;
+    --accent:#b67a2c;
+    --accent-soft:rgba(182,122,44,.14);
+    --shadow:rgba(60,70,60,.18);
+  }
+  [data-font="mincho"]{ --read-font:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"MS PMincho",serif; }
+  [data-font="gothic"]{ --read-font:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,Meiryo,sans-serif; }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:radial-gradient(ellipse 120% 90% at 50% 42%, var(--bg-center), var(--bg-edge));
+    color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,Meiryo,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+    transition:background .5s ease;
+  }
+  .app{ height:100dvh; display:flex; flex-direction:column; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; gap:.5rem;
+    padding:.7rem 1rem; flex:0 0 auto;
+    transition:opacity .4s ease;
+  }
+  .brand{ font-weight:700; letter-spacing:.22em; font-size:.95rem; margin-right:auto; }
+  .brand b{ color:var(--accent); font-weight:700; }
+  .tool{
+    appearance:none; border:1px solid var(--line); background:transparent; color:var(--ink-soft);
+    border-radius:999px; padding:.32rem .7rem; font-size:.8rem; cursor:pointer; line-height:1;
+    transition:border-color .2s, color .2s, background .2s;
+  }
+  .tool:hover{ color:var(--ink); border-color:var(--accent); }
+  .tool.muted{ opacity:.45; }
+  .tool.active{ color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
+  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
+  .seg .tool{ border:0; border-radius:0; }
+  .seg .tool+.tool{ border-left:1px solid var(--line); }
+
+  /* ---------- start screen ---------- */
+  .screen{ flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1rem 1.2rem; }
+  .start{ width:100%; max-width:640px; text-align:center; }
+  .start h1{ font-size:2.5rem; letter-spacing:.18em; margin:0 0 .35rem; font-weight:700; }
+  .start h1 b{ color:var(--accent); }
+  .tagline{ color:var(--ink-soft); margin:0 0 1.6rem; font-size:1.02rem; letter-spacing:.04em; }
+  .paste{
+    width:100%; min-height:34vh; resize:none; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink); border-radius:14px; padding:1.1rem 1.2rem; font-size:1.05rem; line-height:1.8;
+    font-family:var(--read-font); outline:none; transition:border-color .2s;
+  }
+  .paste:focus{ border-color:var(--accent); }
+  .paste::placeholder{ color:var(--ink-faint); }
+  .opts{ display:flex; flex-wrap:wrap; gap:.6rem 1.1rem; align-items:center; justify-content:center; margin:1.1rem 0 1.4rem; color:var(--ink-soft); font-size:.9rem; }
+  .opts label{ display:inline-flex; align-items:center; gap:.4rem; cursor:pointer; }
+  .opts input{ accent-color:var(--accent); }
+  .start-btn{
+    appearance:none; border:0; cursor:pointer; background:var(--accent); color:#1c1407;
+    font-weight:700; font-size:1.05rem; letter-spacing:.08em; padding:.85rem 2.4rem; border-radius:999px;
+    transition:transform .15s var(--ease), filter .2s; box-shadow:0 6px 20px var(--shadow);
+  }
+  .start-btn:hover{ filter:brightness(1.05); transform:translateY(-1px); }
+  .start-btn:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
+  .contract{ margin-top:1rem; color:var(--ink-faint); font-size:.82rem; letter-spacing:.04em; }
+  .lifetime{ margin-top:1.6rem; color:var(--ink-faint); font-size:.8rem; }
+  .lifetime b{ color:var(--accent); font-weight:700; }
+
+  /* ---------- reading stage ---------- */
+  .stage{ position:relative; flex:1; min-height:0; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; }
+  .seg-line{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    padding:0 1.4rem; pointer-events:none;
+  }
+  .seg-line .t{
+    display:block; max-width:32em; text-align:left;
+    font-family:var(--read-font); font-size:var(--read-size); line-height:2.05; color:var(--ink);
+    letter-spacing:.02em; will-change:transform,opacity,filter;
+    pointer-events:auto; cursor:text; -webkit-user-select:text; user-select:text;
+  }
+  .seg-line.leave .t{ pointer-events:none; }
+  .seg-line.rsvp .t{ text-align:center; max-width:90%; }
+  .seg-line.enter .t{ animation:rise .5s var(--ease) both; }
+  .seg-line.leave .t{ animation:recede .62s var(--ease) both; }
+  @keyframes rise{ from{ opacity:0; transform:translateY(16px); filter:blur(1px); } to{ opacity:1; transform:none; filter:none; } }
+  @keyframes recede{ from{ opacity:1; transform:none; filter:none; } to{ opacity:0; transform:translateY(-22px); filter:blur(2.5px); } }
+
+  .pulse{ position:absolute; width:80px; height:80px; border-radius:50%; border:2px solid var(--accent); pointer-events:none; opacity:0; }
+  .pulse.go{ animation:breathe .95s var(--ease) forwards; }
+  @keyframes breathe{ 0%{ opacity:.55; transform:scale(.6);} 70%{ opacity:.18;} 100%{ opacity:0; transform:scale(2.1);} }
+
+  .whisper{ position:absolute; top:calc(50% + 5.5rem); color:var(--accent); font-size:.95rem; letter-spacing:.06em; opacity:0; pointer-events:none; }
+  .whisper.show{ animation:whisper 1.8s ease forwards; }
+  @keyframes whisper{ 0%{opacity:0; transform:translateY(6px);} 20%{opacity:.9; transform:none;} 75%{opacity:.9;} 100%{opacity:0;} }
+
+  .hint{ position:absolute; bottom:1rem; left:0; right:0; text-align:center; color:var(--ink-faint); font-size:.78rem; letter-spacing:.05em; transition:opacity .4s; }
+
+  /* ---------- bottom controls ---------- */
+  .controls{ flex:0 0 auto; width:100%; padding:.7rem 1rem 1.1rem; transition:opacity .4s ease; }
+  .progress{ height:3px; width:100%; background:var(--line); border-radius:2px; overflow:hidden; margin-bottom:.85rem; }
+  .progress span{ display:block; height:100%; width:0; background:var(--accent); transition:width .35s var(--ease); }
+  .ctl-row{ display:flex; align-items:center; gap:.7rem; }
+  .count{ color:var(--ink-soft); font-size:.85rem; min-width:6.5em; }
+  .count b{ color:var(--accent); font-weight:700; font-size:1.05rem; }
+  .count b.pop{ animation:pop .4s var(--ease); display:inline-block; }
+  @keyframes pop{ 0%{transform:scale(1);} 45%{transform:scale(1.5);} 100%{transform:scale(1);} }
+  .spacer{ flex:1; }
+  .btn{
+    appearance:none; cursor:pointer; border-radius:999px; font-size:.92rem; padding:.6rem 1.2rem; line-height:1;
+    border:1px solid var(--line); background:transparent; color:var(--ink); transition:all .18s var(--ease);
+  }
+  .btn:hover{ border-color:var(--accent); }
+  .btn-urge{ border-color:var(--accent); color:var(--accent); }
+  .btn-urge:hover{ background:var(--accent-soft); }
+  .btn-next{ background:var(--accent); color:#1c1407; border-color:var(--accent); font-weight:700; }
+  .btn-next:hover{ filter:brightness(1.06); }
+  .btn-ghost{ color:var(--ink-faint); border-color:transparent; padding:.6rem .8rem; }
+
+  /* idle: dim chrome while reading so the text floats */
+  body.idle .topbar, body.idle .controls{ opacity:.12; }
+  body.idle .stage{ cursor:none; }
+  body.idle .hint{ opacity:0; }
+
+  /* ---------- done screen ---------- */
+  .done{ text-align:center; max-width:520px; }
+  .done h2{ font-size:2rem; letter-spacing:.1em; margin:0 0 .3rem; }
+  .done p{ color:var(--ink-soft); margin:.2rem 0; }
+  .done .stat{ display:flex; gap:2.2rem; justify-content:center; margin:1.8rem 0; }
+  .done .stat div{ display:flex; flex-direction:column; gap:.2rem; }
+  .done .stat .n{ font-size:2.2rem; color:var(--accent); font-weight:700; line-height:1; }
+  .done .stat .l{ font-size:.78rem; color:var(--ink-faint); letter-spacing:.06em; }
+  .done .row{ display:flex; gap:.7rem; justify-content:center; margin-top:.4rem; }
+
+  /* ---------- record chip ---------- */
+  .record-chip{ position:fixed; z-index:50; appearance:none; cursor:pointer; border:0;
+    background:var(--accent); color:#1c1407; font-weight:700; font-size:.85rem; letter-spacing:.04em;
+    padding:.5rem .9rem; border-radius:999px; box-shadow:0 4px 14px var(--shadow); white-space:nowrap; }
+  .record-chip::after{ content:""; position:absolute; left:50%; bottom:-5px; width:10px; height:10px;
+    background:var(--accent); transform:translateX(-50%) rotate(45deg); border-radius:2px; }
+
+  /* ---------- links ---------- */
+  .link-btn{ margin-top:1.1rem; background:transparent; border:0; color:var(--accent); cursor:pointer;
+    font-size:.9rem; letter-spacing:.04em; padding:.4rem; }
+  .link-btn:hover{ text-decoration:underline; }
+
+  /* ---------- review ---------- */
+  #reviewScreen{ padding:0; align-items:stretch; justify-content:flex-start; }
+  .rv-head{ padding:1.3rem 1.2rem .4rem; text-align:center; flex:0 0 auto; }
+  .rv-head h2{ font-size:1.45rem; margin:0 0 .35rem; letter-spacing:.06em; }
+  .rv-head p{ color:var(--ink-soft); font-size:.92rem; margin:0; }
+  .rv-count{ color:var(--ink-faint); font-size:.84rem; margin-top:.6rem; }
+  .rv-count b{ color:var(--accent); font-weight:700; }
+  .rv-list{ flex:1; min-height:0; width:100%; max-width:560px; margin:0 auto; overflow-y:auto; padding:.6rem 1rem 1rem; }
+  .rv-item{ display:flex; align-items:center; gap:.8rem; padding:.85rem 1rem; border:1px solid var(--line);
+    border-radius:14px; margin-bottom:.6rem; cursor:pointer; background:var(--surface); transition:opacity .2s; text-align:left; }
+  .rv-item .w{ flex:1; min-width:0; font-size:1.08rem; color:var(--ink); word-break:break-word;
+    font-family:"Hiragino Mincho ProN","Yu Mincho",YuMincho,serif; }
+  .rv-item .when{ font-size:.74rem; color:var(--ink-faint); flex:0 0 auto; }
+  .rv-item .mark{ width:1.5rem; height:1.5rem; border-radius:50%; border:1.5px solid var(--ink-faint);
+    display:flex; align-items:center; justify-content:center; font-size:.9rem; color:transparent; flex:0 0 auto; }
+  .rv-item.ok{ opacity:.5; }
+  .rv-item.ok .w{ text-decoration:line-through; }
+  .rv-item.ok .mark{ border-color:var(--accent); background:var(--accent); color:#1c1407; }
+  .rv-empty{ text-align:center; color:var(--ink-faint); padding:3rem 1.4rem; line-height:1.9; }
+  .rv-foot{ flex:0 0 auto; display:flex; gap:.7rem; align-items:center; justify-content:space-between;
+    padding:.8rem 1rem 1.2rem; width:100%; max-width:560px; margin:0 auto; }
+
+  .hide{ display:none !important; }
+
+  @media (max-width:560px){
+    .start h1{ font-size:2rem; }
+    .count{ min-width:0; }
+    .count .label{ display:none; }
+    .btn{ padding:.6rem .9rem; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .seg-line.enter .t,.seg-line.leave .t{ animation-duration:.01s; }
+    .pulse.go{ animation-duration:.4s; }
+    *{ scroll-behavior:auto; }
+  }
+</style>
+</head>
+<body data-theme="dark" data-font="mincho">
+<div class="app">
+
+  <!-- top bar -->
+  <div class="topbar" id="topbar">
+    <div class="brand">な<b>み</b>読み</div>
+    <div class="seg">
+      <button class="tool" id="fontMincho">明朝</button>
+      <button class="tool" id="fontGothic">ゴシック</button>
+    </div>
+    <div class="seg">
+      <button class="tool" id="sizeDown">A−</button>
+      <button class="tool" id="sizeUp">A＋</button>
+    </div>
+    <button class="tool" id="soundToggle" title="音">♪ 鳴る</button>
+    <button class="tool" id="themeToggle" title="明るさ">☾</button>
+  </div>
+
+  <!-- START -->
+  <div class="screen" id="startScreen">
+    <div class="start">
+      <h1>な<b>み</b>読み</h1>
+      <p class="tagline">一度読んだら、戻らない。読んだ文字は消えていく。</p>
+      <textarea class="paste" id="pasteBox" placeholder="ここに本文を貼りつけてな。&#10;一段落でも、一章まるごとでもええよ。"></textarea>
+      <div class="opts">
+        <label><input type="radio" name="mode" value="flow" checked> 一文ずつ流す（自分のペース）</label>
+        <label><input type="radio" name="mode" value="rsvp"> 一語ずつ自動で（速読）</label>
+        <label><input type="checkbox" id="fine"> 短く区切る</label>
+      </div>
+      <button class="start-btn" id="startBtn" disabled>読みはじめる</button>
+      <p class="contract">進んだら戻れません。多少もやっとしても、それで合うてます。</p>
+      <p class="lifetime" id="lifetime"></p>
+      <button class="link-btn hide" id="reviewLinkStart">つまった言葉をふり返る →</button>
+    </div>
+  </div>
+
+  <!-- READING -->
+  <div class="screen hide" id="readScreen" style="padding:0; align-items:stretch; justify-content:flex-start;">
+    <div class="stage" id="stage">
+      <div class="pulse" id="pulse"></div>
+      <div class="whisper" id="whisper"></div>
+      <p class="hint" id="hint">タップ／スペースキーで次へ　・　つまった言葉はなぞって記録</p>
+    </div>
+    <div class="controls" id="controls">
+      <div class="progress"><span id="progressFill"></span></div>
+      <div class="ctl-row">
+        <div class="count"><span class="label">我慢した</span> <b id="urgeCount">0</b> 回</div>
+        <div class="spacer"></div>
+        <input type="range" id="speed" min="150" max="800" value="340" class="hide">
+        <button class="btn btn-urge" id="urgeBtn">うずいた</button>
+        <button class="btn btn-next" id="nextBtn">次へ →</button>
+        <button class="btn btn-ghost" id="pauseBtn" style="display:none">⏸</button>
+        <button class="btn btn-ghost" id="quitBtn">やめる</button>
+      </div>
+    </div>
+    <button class="record-chip hide" id="recordChip">この言葉を記録</button>
+  </div>
+
+  <!-- DONE -->
+  <div class="screen hide" id="doneScreen">
+    <div class="done">
+      <h2 id="doneTitle">読みきった。一回で。</h2>
+      <p>戻らんでも、ちゃんと入ってたやろ。</p>
+      <div class="stat">
+        <div><span class="n" id="doneSegs">0</span><span class="l">読んだ文</span></div>
+        <div><span class="n" id="doneUrges">0</span><span class="l">我慢した回数</span></div>
+      </div>
+      <div class="row">
+        <button class="btn btn-next" id="againBtn">次のを読む</button>
+        <button class="btn btn-ghost hide" id="reviewLinkDone">ふり返る</button>
+        <button class="btn btn-ghost" id="resetBtn">記録をリセット</button>
+      </div>
+      <p class="lifetime" id="doneLifetime" style="margin-top:1.4rem;"></p>
+    </div>
+  </div>
+
+  <!-- REVIEW -->
+  <div class="screen hide" id="reviewScreen">
+    <div class="rv-head">
+      <h2>つまった言葉</h2>
+      <p>あの時は大ごと。今見たら、どう？</p>
+      <p class="rv-count" id="rvCount"></p>
+    </div>
+    <div class="rv-list" id="rvList"></div>
+    <div class="rv-foot">
+      <button class="btn btn-ghost" id="rvClear">全部消す</button>
+      <button class="btn" id="rvBack">もどる</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state ----------
+  var KEY = "namiyomi:v1";
+  var mem = null; // in-memory fallback
+  var state = {
+    theme:"dark", font:"mincho", size:1.7, mode:"flow", fine:false, speed:340,
+    sound:true, totalUrges:0, sessions:0, log:[]
+  };
+  var segs = [], idx = 0, sessionUrges = 0, rsvpTimer = null, rsvpPaused = false;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var body = document.body;
+
+  // ---------- persistence (window.storage with graceful fallback) ----------
+  function hasStore(){ return (typeof window !== "undefined") && window.storage && typeof window.storage.get === "function"; }
+  async function load(){
+    if(hasStore()){
+      try{ var r = await window.storage.get(KEY); if(r && r.value) return JSON.parse(r.value); }catch(e){}
+    }
+    return mem;
+  }
+  async function save(){
+    var payload = { theme:state.theme, font:state.font, size:state.size, mode:state.mode,
+                    fine:state.fine, speed:state.speed, sound:state.sound,
+                    totalUrges:state.totalUrges, sessions:state.sessions, log:state.log };
+    mem = payload;
+    if(hasStore()){
+      try{ await window.storage.set(KEY, JSON.stringify(payload)); }catch(e){}
+    }
+  }
+
+  // ---------- segmentation ----------
+  function segment(raw, fine){
+    var text = (raw||"").replace(/\r\n?/g,"\n").trim();
+    if(!text) return [];
+    var closers = "」』）)】〉》”’\"'";
+    var enders = "。．.！？!?";
+    var out = [], buf = "";
+    for(var i=0;i<text.length;i++){
+      var ch = text[i];
+      if(ch === "\n"){ if(buf.trim()) out.push(buf.trim()); buf=""; continue; }
+      buf += ch;
+      if(enders.indexOf(ch) !== -1){
+        while(i+1<text.length && closers.indexOf(text[i+1])!==-1){ buf+=text[i+1]; i++; }
+        if(buf.trim()) out.push(buf.trim());
+        buf="";
+      }
+    }
+    if(buf.trim()) out.push(buf.trim());
+
+    var result = [];
+    if(fine){
+      for(var s=0;s<out.length;s++){
+        var seg = out[s];
+        if(seg.length <= 26){ result.push(seg); continue; }
+        var b="";
+        for(var j=0;j<seg.length;j++){
+          b += seg[j];
+          if("、，,".indexOf(seg[j])!==-1 && b.trim().length>=8){ result.push(b.trim()); b=""; }
+        }
+        if(b.trim()) result.push(b.trim());
+      }
+    } else {
+      for(var k=0;k<out.length;k++){
+        var sg = out[k];
+        if(sg.length <= 130){ result.push(sg); continue; }
+        for(var p=0;p<sg.length;p+=118){ result.push(sg.slice(p, p+118).trim()); }
+      }
+    }
+    return result.filter(Boolean);
+  }
+
+  // ---------- theme / font / size ----------
+  function applyPrefs(){
+    body.setAttribute("data-theme", state.theme);
+    body.setAttribute("data-font", state.font);
+    document.documentElement.style.setProperty("--read-size", state.size + "rem");
+    $("themeToggle").textContent = state.theme === "dark" ? "☀" : "☾";
+    $("fontMincho").classList.toggle("active", state.font==="mincho");
+    $("fontGothic").classList.toggle("active", state.font==="gothic");
+    $("speed").value = state.speed;
+  }
+
+  // ---------- sound (singing bowl) ----------
+  var actx=null;
+  function ensureAudio(){
+    try{
+      if(!actx || actx.state==="closed"){
+        var AC=window.AudioContext||window.webkitAudioContext;
+        if(AC) actx=new AC();
+      }
+      if(actx && actx.state!=="running" && actx.resume){ actx.resume(); }
+    }catch(e){}
+  }
+  function renderBowl(){
+    if(!actx) return;
+    try{
+      var now=actx.currentTime;
+      var master=actx.createGain(); master.gain.value=0.5; master.connect(actx.destination);
+      var base=261.6;
+      var parts=[[1,0.40,6.8],[2.74,0.24,5.2],[5.40,0.13,3.2],[8.90,0.07,1.4]];
+      parts.forEach(function(p){
+        var g=actx.createGain();
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(p[1], now+0.035);
+        g.gain.exponentialRampToValueAtTime(0.0001, now+p[2]);
+        g.connect(master);
+        [1,1.0028].forEach(function(d){
+          var o=actx.createOscillator(); o.type="sine"; o.frequency.value=base*p[0]*d;
+          o.connect(g); o.start(now); o.stop(now+p[2]+0.1);
+        });
+      });
+    }catch(e){}
+  }
+  function playBowl(){
+    if(!state.sound) return;
+    ensureAudio(); if(!actx) return;
+    if(actx.state!=="running" && actx.resume){ actx.resume().then(renderBowl).catch(renderBowl); }
+    else { renderBowl(); }
+  }
+  function applySound(){ var b=$("soundToggle"); if(!b) return; b.textContent = state.sound ? "♪ 鳴る" : "♪ 切"; b.classList.toggle("muted", !state.sound); }
+
+  // ---------- review (stuck words) ----------
+  var reviewReturn="startScreen", clearArmed=false;
+  function hideChip(){ var c=$("recordChip"); if(c) c.classList.add("hide"); }
+  function refreshLinks(){
+    $("reviewLinkStart").classList.toggle("hide", state.log.length===0);
+    $("reviewLinkDone").classList.toggle("hide", state.log.length===0);
+  }
+  function whenStr(t){
+    var d=new Date(t), now=new Date();
+    var a=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    var b=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+    var day=Math.round((a-b)/86400000);
+    if(day<=0) return "今日"; if(day===1) return "昨日"; if(day<7) return day+"日前";
+    return (d.getMonth()+1)+"/"+d.getDate();
+  }
+  function renderReview(){
+    var list=$("rvList"); list.innerHTML="";
+    if(state.log.length===0){
+      var e=document.createElement("div"); e.className="rv-empty";
+      e.textContent="まだ記録はないで。読んでてつまった言葉を、なぞって「記録」してみて。";
+      list.appendChild(e); $("rvCount").innerHTML=""; return;
+    }
+    var ok=0;
+    state.log.slice().reverse().forEach(function(item, ri){
+      var realIndex=state.log.length-1-ri; if(item.ok) ok++;
+      var row=document.createElement("div"); row.className="rv-item"+(item.ok?" ok":"");
+      var w=document.createElement("span"); w.className="w"; w.textContent=item.w;
+      var when=document.createElement("span"); when.className="when"; when.textContent=whenStr(item.t);
+      var mark=document.createElement("span"); mark.className="mark"; mark.textContent="✓";
+      row.appendChild(w); row.appendChild(when); row.appendChild(mark);
+      row.addEventListener("click", function(){ state.log[realIndex].ok=!state.log[realIndex].ok; save(); renderReview(); });
+      list.appendChild(row);
+    });
+    $("rvCount").innerHTML="ふり返って平気やった <b>"+ok+"</b> / "+state.log.length;
+  }
+  function openReview(origin){
+    reviewReturn=origin; clearArmed=false; $("rvClear").textContent="全部消す"; hideChip();
+    ["startScreen","readScreen","doneScreen"].forEach(function(s){ $(s).classList.add("hide"); });
+    renderReview(); $("reviewScreen").classList.remove("hide"); body.classList.remove("idle");
+  }
+
+  // ---------- rendering a segment ----------
+  function showSegment(i, isFirst){
+    hideChip();
+    var stage = $("stage");
+    var prev = stage.querySelector(".seg-line:not(.leave)");
+    if(prev){
+      prev.classList.remove("enter");
+      prev.classList.add("leave");
+      (function(node){ setTimeout(function(){ if(node && node.parentNode) node.parentNode.removeChild(node); }, 680); })(prev);
+    }
+    if(i >= segs.length){ finish(); return; }
+    var el = document.createElement("p");
+    el.className = "seg-line enter" + (state.mode==="rsvp" ? " rsvp" : "");
+    var span = document.createElement("span");
+    span.className = "t";
+    span.textContent = segs[i];
+    el.appendChild(span);
+    stage.appendChild(el);
+    var pct = Math.round(((i+1)/segs.length)*100);
+    $("progressFill").style.width = pct + "%";
+  }
+
+  function advance(){
+    if(idx >= segs.length-1){ idx = segs.length; showSegment(idx); return; }
+    idx++;
+    showSegment(idx);
+  }
+
+  // ---------- urge button ----------
+  var whispers = ["もう入ってるで。","そのままでええ。","確認せんでええねん。","流していこ。","戻らんでも合うてる。","ふっと力抜いて、次。"];
+  function urge(word){
+    sessionUrges++;
+    state.totalUrges++;
+    if(word){ state.log.push({ w:word, t:Date.now(), ok:false }); refreshLinks(); }
+    save();
+    $("urgeCount").textContent = sessionUrges;
+    var c = $("urgeCount");
+    c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop");
+    var pulse = $("pulse");
+    pulse.classList.remove("go"); void pulse.offsetWidth; pulse.classList.add("go");
+    playBowl();
+    var w = $("whisper");
+    w.textContent = word ? "書いた。もう戻らんでええ。" : whispers[Math.floor(Math.random()*whispers.length)];
+    w.classList.remove("show"); void w.offsetWidth; w.classList.add("show");
+  }
+
+  // ---------- RSVP ----------
+  function rsvpStep(){
+    if(rsvpPaused) return;
+    if(idx >= segs.length){ finish(); return; }
+    showSegment(idx);
+    var dwell = Math.max(360, Math.round(segs[idx].length / state.speed * 60000) + 120);
+    idx++;
+    rsvpTimer = setTimeout(rsvpStep, dwell);
+  }
+  function rsvpPauseToggle(){
+    rsvpPaused = !rsvpPaused;
+    $("pauseBtn").textContent = rsvpPaused ? "▶" : "⏸";
+    if(!rsvpPaused){ rsvpStep(); }
+    else if(rsvpTimer){ clearTimeout(rsvpTimer); }
+  }
+
+  // ---------- flow control ----------
+  function startReading(){
+    ensureAudio();
+    var raw = $("pasteBox").value;
+    segs = segment(raw, state.fine);
+    if(!segs.length) return;
+    idx = 0; sessionUrges = 0;
+    $("urgeCount").textContent = "0";
+    $("progressFill").style.width = "0%";
+    $("startScreen").classList.add("hide");
+    $("doneScreen").classList.add("hide");
+    $("readScreen").classList.remove("hide");
+
+    var isRsvp = state.mode === "rsvp";
+    $("nextBtn").style.display = isRsvp ? "none" : "";
+    $("pauseBtn").style.display = isRsvp ? "" : "none";
+    $("speed").classList.toggle("hide", !isRsvp);
+    $("hint").textContent = isRsvp
+      ? "自動で流れます　・　スペースで一時停止　・　戻れません"
+      : "タップ／スペースキーで次へ　・　戻るボタンはありません";
+
+    if(isRsvp){
+      rsvpPaused = false; $("pauseBtn").textContent = "⏸";
+      rsvpStep();
+    } else {
+      showSegment(0, true);
+    }
+    armIdle();
+  }
+
+  function finish(){
+    if(rsvpTimer){ clearTimeout(rsvpTimer); rsvpTimer = null; }
+    state.sessions++;
+    save();
+    $("readScreen").classList.add("hide");
+    $("doneSegs").textContent = segs.length;
+    $("doneUrges").textContent = sessionUrges;
+    $("doneTitle").textContent = sessionUrges>0 ? "読みきった。戻らずに。" : "読みきった。一回で。";
+    $("doneLifetime").innerHTML = "これまでに我慢した回数 <b>"+state.totalUrges+"</b> 回　/　読了 <b>"+state.sessions+"</b> 回";
+    $("doneScreen").classList.remove("hide");
+    body.classList.remove("idle");
+    refreshLinks();
+    hideChip();
+  }
+
+  function quit(){
+    if(rsvpTimer){ clearTimeout(rsvpTimer); rsvpTimer = null; }
+    $("readScreen").classList.add("hide");
+    $("startScreen").classList.remove("hide");
+    body.classList.remove("idle");
+    refreshLifetime();
+    refreshLinks();
+    hideChip();
+  }
+
+  // ---------- idle chrome dimming ----------
+  var idleTimer = null;
+  function armIdle(){
+    clearTimeout(idleTimer);
+    body.classList.remove("idle");
+    idleTimer = setTimeout(function(){ body.classList.add("idle"); }, 2600);
+  }
+  function wake(){ if(!$("readScreen").classList.contains("hide")) armIdle(); }
+
+  function refreshLifetime(){
+    var t = state.totalUrges, s = state.sessions;
+    $("lifetime").innerHTML = (t>0||s>0)
+      ? "これまでに我慢した回数 <b>"+t+"</b> 回　/　読了 <b>"+s+"</b> 回"
+      : "";
+  }
+
+  // ---------- wire up ----------
+  function init(){
+    applyPrefs();
+    refreshLifetime();
+    // restore mode/fine into the form
+    document.querySelectorAll('input[name="mode"]').forEach(function(r){ r.checked = (r.value===state.mode); });
+    $("fine").checked = !!state.fine;
+
+    $("pasteBox").addEventListener("input", function(){
+      $("startBtn").disabled = $("pasteBox").value.trim().length === 0;
+    });
+    document.querySelectorAll('input[name="mode"]').forEach(function(r){
+      r.addEventListener("change", function(){ if(r.checked){ state.mode = r.value; save(); } });
+    });
+    $("fine").addEventListener("change", function(){ state.fine = $("fine").checked; save(); });
+
+    $("startBtn").addEventListener("click", startReading);
+    $("nextBtn").addEventListener("click", function(e){ e.stopPropagation(); advance(); });
+    $("urgeBtn").addEventListener("click", function(e){ e.stopPropagation(); urge(); });
+    $("pauseBtn").addEventListener("click", function(e){ e.stopPropagation(); rsvpPauseToggle(); });
+    $("quitBtn").addEventListener("click", function(e){ e.stopPropagation(); quit(); });
+    $("againBtn").addEventListener("click", function(){ $("pasteBox").value=""; $("startBtn").disabled=true; $("doneScreen").classList.add("hide"); $("startScreen").classList.remove("hide"); refreshLifetime(); refreshLinks(); });
+    $("resetBtn").addEventListener("click", function(){ state.totalUrges=0; state.sessions=0; state.log=[]; save(); $("doneLifetime").innerHTML="これまでに我慢した回数 <b>0</b> 回　/　読了 <b>0</b> 回"; refreshLifetime(); refreshLinks(); });
+
+    $("stage").addEventListener("click", function(){
+      if(state.mode!=="flow") return;
+      var sel = window.getSelection ? String(window.getSelection()) : "";
+      if(sel && sel.trim()) return;
+      advance();
+    });
+
+    $("fontMincho").addEventListener("click", function(){ state.font="mincho"; applyPrefs(); save(); });
+    $("fontGothic").addEventListener("click", function(){ state.font="gothic"; applyPrefs(); save(); });
+    $("themeToggle").addEventListener("click", function(){ state.theme = state.theme==="dark"?"light":"dark"; applyPrefs(); save(); });
+    $("sizeUp").addEventListener("click", function(){ state.size=Math.min(3, Math.round((state.size+0.15)*100)/100); applyPrefs(); save(); });
+    $("sizeDown").addEventListener("click", function(){ state.size=Math.max(1, Math.round((state.size-0.15)*100)/100); applyPrefs(); save(); });
+    $("speed").addEventListener("input", function(){ state.speed=parseInt($("speed").value,10); save(); });
+
+    applySound();
+    refreshLinks();
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden) ensureAudio(); });
+    window.addEventListener("focus", function(){ ensureAudio(); });
+    $("soundToggle").addEventListener("click", function(){ state.sound=!state.sound; applySound(); save(); if(state.sound){ ensureAudio(); playBowl(); } });
+    $("reviewLinkStart").addEventListener("click", function(){ openReview("startScreen"); });
+    $("reviewLinkDone").addEventListener("click", function(){ openReview("doneScreen"); });
+    $("rvBack").addEventListener("click", function(){
+      $("reviewScreen").classList.add("hide"); $(reviewReturn).classList.remove("hide");
+      if(reviewReturn==="startScreen"){ refreshLifetime(); }
+      refreshLinks();
+    });
+    $("rvClear").addEventListener("click", function(){
+      if(!clearArmed){ clearArmed=true; $("rvClear").textContent="ほんまに消す？"; return; }
+      state.log=[]; save(); clearArmed=false; $("rvClear").textContent="全部消す"; renderReview(); refreshLinks();
+    });
+
+    var chip=$("recordChip");
+    function chipRecord(e){
+      e.preventDefault(); e.stopPropagation();
+      var sel=window.getSelection(); var t=sel?String(sel).trim():"";
+      if(t){ urge(t); }
+      if(sel) sel.removeAllRanges();
+      chip.classList.add("hide");
+    }
+    chip.addEventListener("mousedown", chipRecord);
+    chip.addEventListener("touchstart", chipRecord, {passive:false});
+    document.addEventListener("selectionchange", function(){
+      if($("readScreen").classList.contains("hide")){ chip.classList.add("hide"); return; }
+      var sel=window.getSelection();
+      if(!sel || sel.rangeCount===0 || sel.isCollapsed){ chip.classList.add("hide"); return; }
+      var txt=String(sel).trim(); if(!txt){ chip.classList.add("hide"); return; }
+      var cur=$("stage").querySelector(".seg-line:not(.leave) .t");
+      if(!cur || !cur.contains(sel.anchorNode) || !cur.contains(sel.focusNode)){ chip.classList.add("hide"); return; }
+      try{
+        var rect=sel.getRangeAt(0).getBoundingClientRect();
+        chip.classList.remove("hide");
+        var cw=chip.offsetWidth||120, chh=chip.offsetHeight||34;
+        var top=rect.top-chh-10; if(top<8) top=rect.bottom+10;
+        var left=rect.left+rect.width/2-cw/2; left=Math.max(8, Math.min(left, window.innerWidth-cw-8));
+        chip.style.top=top+"px"; chip.style.left=left+"px";
+      }catch(e){ chip.classList.add("hide"); }
+    });
+
+    document.addEventListener("keydown", function(e){
+      if(!$("readScreen").classList.contains("hide")){
+        if(e.code==="Space" || e.code==="ArrowRight" || e.code==="Enter"){
+          e.preventDefault();
+          if(state.mode==="rsvp"){ rsvpPauseToggle(); } else { advance(); }
+        } else if(e.key==="u" || e.code==="ArrowDown"){
+          e.preventDefault(); urge();
+        }
+      } else if(!$("startScreen").classList.contains("hide")){
+        if((e.metaKey||e.ctrlKey) && e.code==="Enter" && !$("startBtn").disabled){ startReading(); }
+      }
+    });
+    ["mousemove","touchstart","keydown"].forEach(function(ev){ document.addEventListener(ev, wake, {passive:true}); });
+  }
+
+  // boot
+  load().then(function(saved){
+    if(saved){ for(var k in saved){ if(saved.hasOwnProperty(k)) state[k]=saved[k]; } }
+    if(!Array.isArray(state.log)) state.log=[];
+    init();
+  });
+
+})();
+</script>
+</body>
+</html>

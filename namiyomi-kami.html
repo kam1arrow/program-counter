@@ -246,13 +246,14 @@
   var actx=null;
   function ensureAudio(){
     try{
-      if(!actx){ var AC=window.AudioContext||window.webkitAudioContext; if(AC) actx=new AC(); }
-      if(actx && actx.state==="suspended") actx.resume();
+      if(!actx || actx.state==="closed"){
+        var AC=window.AudioContext||window.webkitAudioContext;
+        if(AC) actx=new AC();
+      }
+      if(actx && actx.state!=="running" && actx.resume){ actx.resume(); }
     }catch(e){}
   }
-  function playBell(){
-    if(!state.sound) return;
-    ensureAudio();
+  function renderBowl(){
     if(!actx) return;
     try{
       var now=actx.currentTime;
@@ -277,6 +278,12 @@
         });
       });
     }catch(e){}
+  }
+  function playBell(){
+    if(!state.sound) return;
+    ensureAudio(); if(!actx) return;
+    if(actx.state!=="running" && actx.resume){ actx.resume().then(renderBowl).catch(renderBowl); }
+    else { renderBowl(); }
   }
   function applySound(){ var b=$("soundToggle"); b.textContent = state.sound ? "♪ 鳴る" : "♪ 切"; b.classList.toggle("muted", !state.sound); }
 
@@ -377,6 +384,8 @@
 
   function init(){
     applyTheme(); applySound(); refreshStart();
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden) ensureAudio(); });
+    window.addEventListener("focus", function(){ ensureAudio(); });
     $("startBtn").addEventListener("click", startSession);
     $("againBtn").addEventListener("click", startSession);
     $("themeToggle").addEventListener("click", function(){ state.theme = state.theme==="dark"?"light":"dark"; applyTheme(); save(); });
