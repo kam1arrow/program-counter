@@ -1227,66 +1227,71 @@ if(lsHasSave()){
 let mode = 'plan';
 let pcCurrent = null;
 let pcLastKey = null;   // 直近にラベル表示したノード（変化検出用）
-let pcTimer = { dur: 25, left: 25*60, running: false, id: null, phase: 'idle' }; // phase: idle|running|logging
+let pcTimer_REMOVED = null;
 const PC_C = 2 * Math.PI * 80;
+const FOCUS_SEC = 25*60, BREAK_SEC = 5*60, CYCLE_SEC = 30*60; // 毎時:00/:30に開始、25分集中+5分休憩
+let pcPhase = null;     // 'focus' | 'break'（壁時計から導出）
+let pcRemain = 0;       // 現フェーズの残り秒
+let committed = false;  // 現セットを＋🍅で有効化したか
+let pcTickId = null;
 
 function fmtPC(s){ return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
 function pcGoalPath(k){ const p=[]; let c=tree.nodes[k]?.parent; while(c){ p.unshift(c); c=tree.nodes[c]?.parent; } return p; }
 function pcValidCurrent(){ const n=tree.nodes[pcCurrent]; return !!(n && !n.has_child && !n.is_finished); }
 
+function clockPhase(){
+  const d=new Date();
+  const t=(d.getMinutes()%30)*60 + d.getSeconds();   // 直近の :00/:30 からの経過秒
+  if(t < FOCUS_SEC) return { phase:'focus', remain:FOCUS_SEC-t };
+  return { phase:'break', remain:CYCLE_SEC-t };
+}
+function pcTickStart(){ if(pcTickId) return; pcTick(); pcTickId=setInterval(pcTick,1000); }
+function pcTick(){
+  const c=clockPhase();
+  pcRemain=c.remain;
+  if(c.phase!==pcPhase){                                       // フェーズ遷移
+    pcPhase=c.phase; committed=false;
+    if(mode==='run'){
+      if(c.phase==='focus'){ seStart(); pcPickNext('any'); }   // 新セット開始(:00/:30) → 自動でタスク選択
+      else { seEnd(); renderPC(); }                            // 集中 → 休憩
+    }
+    return;
+  }
+  if(mode==='run') pcUpdateTimerDOM();
+}
+function pcUpdateTimerDOM(){
+  const t=$('pc-time'); if(t) t.textContent=fmtPC(pcRemain);
+  const total = pcPhase==='break' ? BREAK_SEC : FOCUS_SEC;
+  const fg=$('pc-ring-fg'); if(fg) fg.setAttribute('stroke-dashoffset', PC_C*(1-pcRemain/total));
+}
+
 function setMode(m){
-  mode = m; pcStopTimer();
+  mode = m;
   if(m!=='run'){ stopAmbient(); }
   document.body.classList.toggle('run-mode', m==='run');
   $('pc-view').classList.toggle('active', m==='run');
   const rb=$('mode-run'), pb=$('mode-plan');
   if(rb&&pb){ rb.classList.toggle('on', m==='run'); pb.classList.toggle('on', m==='plan'); }
   if(m==='run'){
-    if(!pcValidCurrent()) pcPickNext();
-    else { pcResetTimer(); renderPC(); }
+    const c=clockPhase(); pcPhase=c.phase; pcRemain=c.remain;
+    pcTickStart();
+    if(pcPhase==='focus' && !pcValidCurrent()) pcPickNext('any');
+    else renderPC();
   } else { computeAll(); render(); }
 }
 
-function pcResetTimer(){ pcStopTimer(); pcTimer.left = pcTimer.dur*60; pcTimer.phase='idle'; }
-function pcStopTimer(){ if(pcTimer.id){ clearInterval(pcTimer.id); pcTimer.id=null; } pcTimer.running=false; }
-function pcSetDur(d){ if(pcTimer.running) return; pcTimer.dur=d; pcTimer.left=d*60; renderPC(); }
-
-function pcStart(){
-  if(pcTimer.phase==='logging') return;
-  if(pcTimer.running){ pcStopTimer(); renderPC(); return; }
-  pcTimer.phase='running'; pcTimer.running=true;
-  seStart();
-  pcTimer.id=setInterval(()=>{
-    pcTimer.left--;
-    if(pcTimer.left<=0){ pcStopTimer(); pcTimer.left=0; pcComplete(); return; }
-    pcUpdateTimerDOM();
-  },1000);
-  renderPC();
+// ＋🍅: 現在の集中タイマーを「有効な記録」として確定し、+1ポモドーロを記録する
+function pcCommit(){
+  if(pcPhase!=='focus' || committed || !pcCurrent || !tree.nodes[pcCurrent]) return;
+  tree.nodes[pcCurrent].pomodoro=(tree.nodes[pcCurrent].pomodoro||0)+1;
+  committed=true;
+  const d=new Date();
+  const stamp=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const prev=tree.nodes[pcCurrent].note||'';
+  tree.nodes[pcCurrent].note=`[${stamp} 🍅]`+(prev?`\n${prev}`:'');
+  tone([784,1046.5],0.08,0.22);   // 確定音
+  computeAll(); lsSave(); renderPC();
 }
-function pcUpdateTimerDOM(){
-  const t=$('pc-time'); if(t) t.textContent=fmtPC(pcTimer.left);
-  const fg=$('pc-ring-fg'); if(fg) fg.setAttribute('stroke-dashoffset', PC_C*(1-pcTimer.left/(pcTimer.dur*60)));
-}
-function pcAccrue(playSE){
-  if(pcCurrent && tree.nodes[pcCurrent]) tree.nodes[pcCurrent].pomodoro=(tree.nodes[pcCurrent].pomodoro||0)+1;
-  if(playSE) seEnd();
-  pcTimer.phase='logging'; computeAll(); lsSave(); renderPC();
-}
-function pcComplete(){ pcAccrue(true); }                 // timer ran out
-function pcAddPomo(){ pcStopTimer(); pcAccrue(false); }   // manual +1
-function pcSubmitLog(action){
-  const v=($('pc-lognote')?.value||'').trim();
-  if(v && pcCurrent && tree.nodes[pcCurrent]){
-    const d=new Date();
-    const stamp=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    const prev=tree.nodes[pcCurrent].note||'';
-    tree.nodes[pcCurrent].note=`[${stamp} 🍅] ${v}`+(prev?`\n${prev}`:'');
-  }
-  pcTimer.phase='idle';
-  if(action==='continue'){ pcResetTimer(); renderPC(); lsSave(); }   // 同一タスクを継続
-  else { pcPickNext('any'); }                                         // 親を問わないジャンプ
-}
-function pcDone(){ if(pcCurrent) markDone(pcCurrent); pcPickNext(); }
 
 // ── Audio: ambient soundscapes + SE (Web Audio, no external assets) ──
 let actx=null, ambGain=null, ambNodes=[], ambMode='none', crackleTimer=null;
@@ -1370,7 +1375,7 @@ function seEnd(){ tone([784, 1046.5, 1318.5], 0.15, 0.26); }           // ▲▲
 function pcPickNext(pmode){
   computeAll();
   const leaves=getLeaves();
-  if(!leaves.length){ pcCurrent=null; pcResetTimer(); renderPC(); lsSave(); return; }
+  if(!leaves.length){ pcCurrent=null; committed=false; renderPC(); lsSave(); return; }
   let pool=leaves;
   const par=tree.nodes[pcCurrent]?.parent;
   if(pmode==='sibling' && par!=null){ const b=leaves.filter(k=>tree.nodes[k].parent===par); if(b.length) pool=b; }
@@ -1378,81 +1383,99 @@ function pcPickNext(pmode){
   // 'any'（既定）→ 親で絞らず全葉から
   const without=pool.filter(k=>k!==pcCurrent); if(without.length) pool=without;
   pcCurrent=weightedPick(pool);
+  committed=false;
   selectedKey=pcCurrent; expandedKey=pcCurrent;   // keep plan view in sync
-  pcResetTimer(); renderPC(); lsSave();
+  renderPC(); lsSave();
 }
 
-function pcLoadAndRun(k){ pcCurrent=k; setMode('run'); }
+function pcLoadAndRun(k){ pcCurrent=k; committed=false; setMode('run'); }
 function pcToPlan(){
   setMode('plan');
   if(pcCurrent && tree.nodes[pcCurrent]){ selectedKey=pcCurrent; expandedKey=pcCurrent; render(); showDetail(pcCurrent); }
 }
 
 function pcRing(){
-  const off=PC_C*(1-pcTimer.left/(pcTimer.dur*60));
+  const total = pcPhase==='break' ? BREAK_SEC : FOCUS_SEC;
+  const off = PC_C*(1-pcRemain/total);
+  const col = pcPhase==='break' ? 'var(--t3)' : 'var(--yellow)';
   return `<svg width="184" height="184" viewBox="0 0 184 184">
     <circle cx="92" cy="92" r="80" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="4"/>
-    <circle id="pc-ring-fg" cx="92" cy="92" r="80" fill="none" stroke="var(--yellow)" stroke-width="4"
+    <circle id="pc-ring-fg" cx="92" cy="92" r="80" fill="none" stroke="${col}" stroke-width="4"
       stroke-linecap="round" stroke-dasharray="${PC_C}" stroke-dashoffset="${off}"
-      style="transition:stroke-dashoffset .95s linear"/>
+      style="transition:stroke-dashoffset .9s linear"/>
   </svg>
-  <div class="pc-ring-time"><div class="t" id="pc-time">${fmtPC(pcTimer.left)}</div><div class="s">focus</div></div>`;
+  <div class="pc-ring-time"><div class="t" id="pc-time">${fmtPC(pcRemain)}</div><div class="s">${pcPhase==='break'?'break':'focus'}</div></div>`;
+}
+
+function ambRow(){
+  return `<div class="pc-amb">
+    <button class="${ambMode==='fire'?'on':''}" onclick="setAmbient('fire')">🔥 焚き火</button>
+    <button class="${ambMode==='waves'?'on':''}" onclick="setAmbient('waves')">🌊 波の音</button>
+    <button class="${ambMode==='white'?'on':''}" onclick="setAmbient('white')">☁ ホワイトノイズ</button>
+  </div>`;
 }
 
 function renderPC(){
   const v=$('pc-view'); if(!v) return;
 
+  // 休憩フェーズ
+  if(pcPhase==='break'){
+    v.innerHTML=`
+      <div class="pc-ring-wrap">${pcRing()}</div>
+      <div class="pc-instruction" style="font-size:27px">☕ 休憩</div>
+      <div class="pc-pomo" style="color:var(--t3)">次のセットは :00 / :30 に自動で始まる</div>
+      ${ambRow()}`;
+    return;
+  }
+
+  // 集中フェーズ・実行可能タスクなし
   if(!pcCurrent || !tree.nodes[pcCurrent]){
-    v.innerHTML=`<div class="pc-empty">実行可能なブロックがない。<br>計画モードで分解せよ。</div>
-      <div class="pc-acts" style="margin-top:26px"><button class="btn primary pc-big" onclick="setMode('plan')">計画モードへ</button></div>`;
+    v.innerHTML=`
+      <div class="pc-ring-wrap">${pcRing()}</div>
+      <div class="pc-empty" style="margin-top:24px">実行可能なタスクがない。<br>計画モードで分解せよ。</div>
+      <div class="pc-acts" style="margin-top:22px"><button class="btn primary pc-big" onclick="setMode('plan')">計画モードへ</button></div>
+      ${ambRow()}`;
     return;
   }
 
   const n=tree.nodes[pcCurrent];
   const path=pcGoalPath(pcCurrent);
   const crumb=path.length?`<div class="pc-crumb">${path.map(p=>`<b>${esc(p)}</b>`).join(' <span style="opacity:.4">›</span> ')}</div>`:'';
-
-  if(pcTimer.phase==='logging'){
-    v.innerHTML=`${crumb}
-      <div class="pc-logbox">
-        <div class="pc-instruction" style="font-size:23px;margin-bottom:18px">🍅 ＋1 ポモドーロ。1行だけ記録しろ。</div>
-        <div class="sec-lbl" style="text-align:left;margin-bottom:7px">観測だけ — 判断は書くな</div>
-        <textarea id="pc-lognote" rows="3" placeholder="気づき・違和感・残りの手触り（空欄でスキップ可）"></textarea>
-        <div class="pc-acts" style="margin-top:16px">
-          <button class="btn success pc-big" onclick="pcSubmitLog('jump')">→ 次へ</button>
-          <button class="btn pc-big" onclick="pcSubmitLog('continue')">↻ 継続</button>
-        </div>
-      </div>`;
-    setTimeout(()=>{ const el=$('pc-lognote'); if(el) el.focus(); }, 60);
-    return;
-  }
-
   const pomo=n.pomodoro>0 ? '🍅'.repeat(Math.min(n.pomodoro,8))+(n.pomodoro>8?` ×${n.pomodoro}`:'') : '';
-  const playLabel = pcTimer.running ? '⏸ 一時停止' : (pcTimer.left < pcTimer.dur*60 ? '▶ 再開' : '▶ 開始');
   const anim = (pcCurrent!==pcLastKey) ? ' anim' : '';   // 選択ノードが変化した時だけアニメ
   pcLastKey = pcCurrent;
+
+  const acts = committed
+    ? `<div class="pc-acts">
+         <button class="btn success pc-big" disabled style="opacity:.75;cursor:default"><i class="ti ti-check"></i> このセットを記録済み</button>
+       </div>`
+    : `<div class="pc-acts">
+         <button class="btn pc-big" onclick="pcCommit()">＋🍅</button>
+         <button class="btn success pc-big" onclick="pcPickNext('any')"><i class="ti ti-arrow-right"></i> 次へ</button>
+       </div>
+       <div class="pc-subnav">
+         <button onclick="pcPickNext('sibling')"><i class="ti ti-arrows-shuffle"></i> sibling</button>
+         <button onclick="pcPickNext('parent')"><i class="ti ti-arrow-ramp-right"></i> parent</button>
+       </div>`;
 
   v.innerHTML=`${crumb}
     <div class="pc-ring-wrap">${pcRing()}</div>
     <div class="pc-instruction${anim}">${esc(n.key)}</div>
     <div class="pc-pomo">${pomo}</div>
-    <div class="pc-acts">
-      <button class="btn warn pc-big" onclick="pcStart()">${playLabel}</button>
-      <button class="btn pc-big" onclick="pcAddPomo()">＋🍅</button>
-      <button class="btn success pc-big" onclick="pcPickNext('any')"><i class="ti ti-arrow-right"></i> 次へ</button>
-    </div>
-    <div class="pc-subnav">
-      <button onclick="pcPickNext('sibling')"><i class="ti ti-arrows-shuffle"></i> sibling</button>
-      <button onclick="pcPickNext('parent')"><i class="ti ti-arrow-ramp-right"></i> parent</button>
-    </div>
-    <div class="pc-amb">
-      <button class="${ambMode==='fire'?'on':''}" onclick="setAmbient('fire')">🔥 焚き火</button>
-      <button class="${ambMode==='waves'?'on':''}" onclick="setAmbient('waves')">🌊 波の音</button>
-      <button class="${ambMode==='white'?'on':''}" onclick="setAmbient('white')">☁ ホワイトノイズ</button>
-    </div>`;
+    ${acts}
+    ${ambRow()}`;
 }
 
-showSplash();
+// 起動: スプラッシュを出さず、保存データを復元してフォーカス画面へ
+(function init(){
+  const data = lsLoad();
+  if(data && data.nodes){ tree = data; }
+  const sp=$('splash'); if(sp) sp.style.display='none';
+  selectedKey=null; expandedKey=null; randomKey=null;
+  computeAll();
+  updateLSUI();
+  setMode('run');
+})();
 </script>
 </body>
 </html>
